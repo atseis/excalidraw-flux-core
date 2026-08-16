@@ -75,13 +75,28 @@ export const isInteractive = (target: Element | EventTarget | null) => {
   );
 };
 
+// zsviczian START -- keep configurable canvas shortcuts out of host and plugin contenteditable editors
+const isContentEditableTarget = (
+  target: Element | EventTarget | null,
+): target is HTMLElement => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  // JSDOM does not implement `isContentEditable`; checking the nearest
+  // explicit host also makes the input guard directly regression-testable.
+  const host = target.closest<HTMLElement>("[contenteditable]");
+  const mode = host?.getAttribute("contenteditable")?.toLowerCase();
+  return mode === "" || mode === "true" || mode === "plaintext-only";
+};
+// zsviczian END
+
 export const isWritableElement = (
   target: Element | EventTarget | null,
-): target is
-  | HTMLInputElement
-  | HTMLTextAreaElement
-  | HTMLBRElement
-  | HTMLDivElement =>
+): target is HTMLElement =>
   (target instanceof HTMLElement && target.dataset.type === "wysiwyg") ||
   target instanceof HTMLBRElement || // newline in wysiwyg
   target instanceof HTMLTextAreaElement ||
@@ -90,6 +105,7 @@ export const isWritableElement = (
       target.type === "number" ||
       target.type === "password" ||
       target.type === "search")) ||
+  isContentEditableTarget(target) || // zsviczian -- protect contenteditable hosts and descendants from canvas shortcuts
   (target instanceof HTMLElement && target.closest(".cm-editor") !== null);
 
 export const getFontFamilyString = ({
@@ -97,6 +113,16 @@ export const getFontFamilyString = ({
 }: {
   fontFamily: FontFamilyValues;
 }) => {
+  // zsviczian: Some Obsidian/YMJR scenes serialize a CSS font-family string
+  // instead of an official numeric family id. Keep those scenes renderable
+  // without changing the upstream numeric scene contract for new elements.
+  const runtimeFontFamily: unknown = fontFamily;
+  if (typeof runtimeFontFamily === "string") {
+    const legacyFontFamily = runtimeFontFamily.trim();
+    return legacyFontFamily
+      ? `${legacyFontFamily}, sans-serif`
+      : WINDOWS_EMOJI_FALLBACK_FONT;
+  }
   for (const [fontFamilyString, id] of Object.entries(FONT_FAMILY)) {
     if (id === fontFamily) {
       return `${fontFamilyString}${getFontFamilyFallbacks(id)

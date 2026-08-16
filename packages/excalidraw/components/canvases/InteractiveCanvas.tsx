@@ -278,6 +278,7 @@ const getRelevantAppStateProps = (
   shouldCacheIgnoreZoom: appState.shouldCacheIgnoreZoom,
   exportScale: appState.exportScale,
   currentItemArrowType: appState.currentItemArrowType,
+  currentItemSnap: appState.currentItemSnap, // zsviczian -- rerender connection candidates when the YMJR snap mode changes.
 });
 
 const areEqual = (

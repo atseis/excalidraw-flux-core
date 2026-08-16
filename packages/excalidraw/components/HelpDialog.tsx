@@ -10,7 +10,8 @@ import { probablySupportsClipboardBlob } from "../clipboard";
 import { t } from "../i18n";
 import { getShortcutKey } from "../shortcut";
 
-import { useExcalidrawActionManager } from "./App";
+import { useAppProps, useExcalidrawActionManager } from "./App";
+import { getToolShortcutKeys } from "./Tools";
 import { Dialog } from "./Dialog";
 import { ExternalLinkIcon, GithubIcon, youtubeIcon } from "./icons";
 
@@ -128,6 +129,12 @@ const ShortcutKey = (props: { children: React.ReactNode }) => (
 
 export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
   const actionManager = useExcalidrawActionManager();
+  const appProps = useAppProps();
+  const toolShortcuts = React.useCallback(
+    (tool: Parameters<typeof getToolShortcutKeys>[0]) =>
+      getToolShortcutKeys(tool, appProps.toolShortcutPreferences),
+    [appProps.toolShortcutPreferences],
+  );
   const handleClose = React.useCallback(() => {
     if (onClose) {
       onClose();
@@ -150,40 +157,40 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
             <Shortcut label={t("toolBar.hand")} shortcuts={[KEYS.H]} />
             <Shortcut
               label={t("toolBar.selection")}
-              shortcuts={[KEYS.V, KEYS["1"]]}
+              shortcuts={toolShortcuts("selection")}
             />
             <Shortcut
               label={t("toolBar.rectangle")}
-              shortcuts={[KEYS.R, KEYS["2"]]}
+              shortcuts={toolShortcuts("rectangle")}
             />
             <Shortcut
               label={t("toolBar.diamond")}
-              shortcuts={[KEYS.D, KEYS["3"]]}
+              shortcuts={toolShortcuts("diamond")}
             />
             <Shortcut
               label={t("toolBar.ellipse")}
-              shortcuts={[KEYS.O, KEYS["4"]]}
+              shortcuts={toolShortcuts("ellipse")}
             />
             <Shortcut
               label={t("toolBar.arrow")}
-              shortcuts={[KEYS.A, KEYS["5"]]}
+              shortcuts={toolShortcuts("arrow")}
             />
             <Shortcut
               label={t("toolBar.line")}
-              shortcuts={[KEYS.L, KEYS["6"]]}
+              shortcuts={toolShortcuts("line")}
             />
             <Shortcut
               label={t("toolBar.freedraw")}
-              shortcuts={[KEYS.P, KEYS["7"]]}
+              shortcuts={toolShortcuts("freedraw")}
             />
             <Shortcut
               label={t("toolBar.text")}
-              shortcuts={[KEYS.T, KEYS["8"]]}
+              shortcuts={toolShortcuts("text")}
             />
             <Shortcut label={t("toolBar.image")} shortcuts={[KEYS["9"]]} />
             <Shortcut
               label={t("toolBar.eraser")}
-              shortcuts={[KEYS.E, KEYS["0"]]}
+              shortcuts={toolShortcuts("eraser")}
             />
             <Shortcut label={t("toolBar.frame")} shortcuts={[KEYS.F]} />
             <Shortcut label={t("toolBar.laser")} shortcuts={[KEYS.K]} />

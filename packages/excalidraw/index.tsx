@@ -126,6 +126,8 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     viewportStatusFrame,
     currentUserControls,
     imageOptions,
+    toolShortcutPreferences, // zsviczian -- expose host-configurable YMJR-compatible tool shortcuts to App
+    onLineAnimationShortcut, // zsviczian -- retain the deprecated host callback for source compatibility
   } = props;
 
   const canvasActions = props.UIOptions?.canvasActions;
@@ -278,6 +280,8 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           viewportStatusFrame={viewportStatusFrame}
           currentUserControls={currentUserControls}
           imageOptions={normalizedImageOptions}
+          toolShortcutPreferences={toolShortcutPreferences} // zsviczian -- forward host shortcut preferences through the public wrapper
+          onLineAnimationShortcut={onLineAnimationShortcut} // zsviczian -- forward the deprecated compatibility callback
         >
           {children}
         </App>
@@ -459,6 +463,7 @@ export { getBoundTextMaxWidth } from "@excalidraw/element/textElement"; //zsvicz
 export { mermaidToExcalidraw } from "./components/TTDDialog/MermaidToExcalidrawLib"; //zsviczian
 export {
   registerLocalFont,
+  registerCustomFont, //zsviczian
   getFontMetrics,
   getFontFamilies,
   registerFontsInCSS,

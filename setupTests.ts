@@ -17,6 +17,54 @@ import {
 Object.assign(globalThis, testPolyfills);
 PolyfillLocalStorage();
 
+// zsviczian -- the maintained Excalidraw package is embedded in Obsidian and
+// reads its host plugin while editor modules are initialized. Upstream browser
+// tests do not provide that global, so keep one shared, intentionally small
+// host facade here instead of repeating a hoisted mock in every interaction
+// test. This code is loaded by Vitest only and is not part of production builds.
+Object.assign(globalThis, {
+  app: {
+    plugins: {
+      plugins: {
+        "obsidian-excalidraw-plugin": {
+          excalidrawConfig: {
+            areaLimit: 16_777_216,
+            widthHeightLimit: 32_767,
+          },
+          getHighlightColor: (
+            _sceneBackgroundColor: string,
+            opacity = 1,
+          ) => `rgba(0,118,255,${opacity})`,
+          getLabel: (key: string) => key,
+          runAction: vi.fn(),
+          attachInlineLinkSuggester: () => ({
+            isBlockingKeys: () => false,
+            close: vi.fn(),
+          }),
+          loadFontFromFile: vi.fn().mockResolvedValue(undefined),
+          getObsidianDevice: () => ({
+            isDesktop: true,
+            isPhone: false,
+            isTablet: false,
+            isMobile: false,
+            isLinux: true,
+            isMacOS: false,
+            isWindows: false,
+            isIOS: false,
+            isAndroid: false,
+          }),
+          getPreferredUIMode: () => "tray",
+          settings: {
+            desktopUIMode: "tray",
+            tabletUIMode: "compact",
+            phoneUIMode: "mobile",
+          },
+        },
+      },
+    },
+  },
+});
+
 // By default testing-library dumps the entire serialized DOM into the error
 // message whenever a `waitFor`/`getBy*` fails, which floods the test output
 // (often hundreds of lines of HTML per failure). Strip it out unless

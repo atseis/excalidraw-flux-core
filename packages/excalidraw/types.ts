@@ -171,6 +171,29 @@ export type ToolType =
   | "autoshape"
   | "bucketfill";
 
+/**
+ * Host-configurable shortcuts for the toolbar tools that have both a digit
+ * and one or more letter aliases. Missing preferences preserve Excalidraw's
+ * built-in behavior (both aliases enabled).
+ */
+export type ConfigurableToolShortcutType =
+  | "eraser"
+  | "selection"
+  | "rectangle"
+  | "diamond"
+  | "ellipse"
+  | "arrow"
+  | "line"
+  | "freedraw"
+  | "text";
+
+export type ToolShortcutPreferences = Partial<
+  Record<
+    ConfigurableToolShortcutType,
+    Partial<{ numeric: boolean; letter: boolean }>
+  >
+>;
+
 export type ElementOrToolType = ExcalidrawElementType | ToolType | "custom";
 
 export type ActiveTool =
@@ -269,6 +292,7 @@ export type InteractiveCanvasAppState = Readonly<
     shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
     exportScale: AppState["exportScale"];
     currentItemArrowType: AppState["currentItemArrowType"];
+    currentItemSnap: AppState["currentItemSnap"]; // zsviczian -- YMJR Points preview before arrow creation.
   }
 >;
 
@@ -449,7 +473,8 @@ export interface AppState {
   currentItemEndArrowhead: Arrowhead | null;
   currentHoveredFontFamily: FontFamilyValues | null;
   currentItemRoundness: StrokeRoundness;
-  currentItemArrowType: "sharp" | "round" | "elbow";
+  currentItemArrowType: "sharp" | "round" | "elbow" | "curve";
+  currentItemSnap: "none" | "points" | "edge";
   currentItemFrameRole: ExcalidrawFrameLikeElement["frameRole"] | null; //zsviczian
   viewBackgroundColor: string;
   scrollX: number;
@@ -963,6 +988,19 @@ export interface ExcalidrawProps {
   activeTool?:
     | { type: Exclude<ToolType, "image"> }
     | { type: "custom"; customType: string };
+  /**
+   * Enables/disables the digit and letter aliases of tools 0–8. Supplying
+   * this object also enables the host-oriented `l` line-style and `a`
+   * Arrowhead selectors.
+   * Omit to preserve the upstream standalone shortcut behavior.
+   */
+  toolShortcutPreferences?: ToolShortcutPreferences;
+  /**
+   * @deprecated The `la` shortcut now applies a default dash animation
+   * directly. Hosts may retain this callback for backwards compatibility or
+   * invoke their advanced `add animation for line` command separately.
+   */
+  onLineAnimationShortcut?: () => void | Promise<void>;
   zenModeEnabled?: boolean;
   gridModeEnabled?: boolean;
   objectsSnapModeEnabled?: boolean;
@@ -1350,7 +1388,9 @@ export interface ExcalidrawImperativeAPI {
     undo: InstanceType<typeof App>["undo"]; //zsviczian
     redo: InstanceType<typeof App>["redo"]; //zsviczian
   };
-  setForceRenderAllEmbeddables: InstanceType<typeof App>["setForceRenderAllEmbeddables"]; //zsviczian
+  setForceRenderAllEmbeddables: InstanceType<
+    typeof App
+  >["setForceRenderAllEmbeddables"]; //zsviczian
   zoomToFit: InstanceType<typeof App>["zoomToFit"]; //zsviczian
   refreshEditorInterface: InstanceType<typeof App>["refreshEditorInterface"]; //zsviczian
   isTouchScreen: InstanceType<typeof App>["isTouchScreen"]; //zsviczian

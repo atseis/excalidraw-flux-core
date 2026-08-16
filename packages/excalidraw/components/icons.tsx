@@ -1556,6 +1556,70 @@ export const ArrowheadBarIcon = React.memo(
     ),
 );
 
+export const ArrowheadChevronIcon = React.memo(
+  ({ flip = false }: { flip?: boolean }) =>
+    createIcon(
+      <g
+        transform={flip ? "translate(40, 0) scale(-1, 1)" : ""}
+        stroke="var(--icon-fill-color)"
+        fill="var(--icon-fill-color)"
+        strokeLinejoin="round"
+      >
+        <path d="M7,11 H23" strokeWidth={2} strokeLinecap="round" />
+        <path d="M22,5 L35,11 L22,17 L27,11 Z" />
+      </g>,
+      arrowheadPreviewIconProps,
+    ),
+);
+
+export const ArrowheadChevronOutlineIcon = React.memo(
+  ({ flip = false }: { flip?: boolean }) =>
+    createIcon(
+      <g
+        transform={flip ? "translate(40, 0) scale(-1, 1)" : ""}
+        stroke="var(--icon-fill-color)"
+        fill="none"
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      >
+        <path d="M7,11 H23 M22,5 L35,11 L22,17 L27,11 Z" />
+      </g>,
+      arrowheadPreviewIconProps,
+    ),
+);
+
+export const ArrowheadBlockIcon = React.memo(
+  ({ flip = false }: { flip?: boolean }) =>
+    createIcon(
+      <g
+        transform={flip ? "translate(40, 0) scale(-1, 1)" : ""}
+        stroke="var(--icon-fill-color)"
+        fill="var(--icon-fill-color)"
+        strokeLinejoin="round"
+      >
+        <path d="M6,8 H24 V4 L36,11 L24,18 V14 H6 Z" />
+      </g>,
+      arrowheadPreviewIconProps,
+    ),
+);
+
+export const ArrowheadBlockOutlineIcon = React.memo(
+  ({ flip = false }: { flip?: boolean }) =>
+    createIcon(
+      <g
+        transform={flip ? "translate(40, 0) scale(-1, 1)" : ""}
+        stroke="var(--icon-fill-color)"
+        fill="none"
+        strokeWidth={2}
+        strokeLinejoin="round"
+      >
+        <path d="M6,8 H24 V4 L36,11 L24,18 V14 H6 Z" />
+      </g>,
+      arrowheadPreviewIconProps,
+    ),
+);
+
 export const ArrowheadCardinalityOneIcon = React.memo(
   ({ flip = false }: { flip?: boolean }) =>
     createIcon(
@@ -2497,6 +2561,43 @@ export const roundArrowIcon = createIcon(
   <g>
     <path d="M16,12L20,9L16,6" />
     <path d="M6 20c0 -6.075 4.925 -11 11 -11h3" />
+  </g>,
+  tablerIconProps,
+);
+
+export const curveArrowIcon = createIcon(
+  <g>
+    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+    <path d="M4 6c8 0 8 12 15 12" />
+    <path d="M16 15l3 3l-3 3" />
+  </g>,
+  tablerIconProps,
+);
+
+export const snapOffIcon = createIcon(
+  <g>
+    <path d="M5 12h14" />
+    <path d="M8 8l8 8" />
+    <path d="M16 8l-8 8" />
+  </g>,
+  tablerIconProps,
+);
+
+export const snapPointsIcon = createIcon(
+  <g>
+    <path d="M4 18L18 4" />
+    <circle cx="5" cy="17" r="2" />
+    <circle cx="12" cy="10" r="2" />
+    <circle cx="19" cy="3" r="2" />
+  </g>,
+  tablerIconProps,
+);
+
+export const snapEdgeIcon = createIcon(
+  <g>
+    <rect x="4" y="5" width="16" height="14" rx="2" />
+    <path d="M2 12h20" />
+    <circle cx="20" cy="12" r="2" />
   </g>,
   tablerIconProps,
 );

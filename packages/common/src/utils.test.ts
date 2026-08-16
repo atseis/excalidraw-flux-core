@@ -1,5 +1,6 @@
 import {
   isTransparent,
+  isWritableElement,
   mapFind,
   reduceToCommonValue,
 } from "@excalidraw/common";
@@ -11,6 +12,25 @@ import { throttleRAF } from "./utils";
 type RafCallback = FrameRequestCallback;
 
 describe("@excalidraw/common/utils", () => {
+  describe("isWritableElement()", () => {
+    it("recognizes contenteditable hosts and descendants", () => {
+      const editor = document.createElement("div");
+      editor.setAttribute("contenteditable", "true");
+      const child = document.createElement("span");
+      editor.appendChild(child);
+
+      expect(isWritableElement(editor)).toBe(true);
+      expect(isWritableElement(child)).toBe(true);
+    });
+
+    it("does not treat an explicitly disabled contenteditable as writable", () => {
+      const editor = document.createElement("div");
+      editor.setAttribute("contenteditable", "false");
+
+      expect(isWritableElement(editor)).toBe(false);
+    });
+  });
+
   describe("isTransparent()", () => {
     it("should return true when color is rgb transparent", () => {
       expect(isTransparent("#ff00")).toEqual(true);

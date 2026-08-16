@@ -70,8 +70,11 @@ export type ActionName =
   | "changeSloppiness"
   | "changeFreedrawMode"
   | "changeStrokeStyle"
+  | "changeQuickLineStyle" // zsviczian -- `ls`/`ld`/`lt`, clearing animation
+  | "applyLineAnimation" // zsviczian -- dialog-free `la` animation shortcut
   | "changeArrowhead"
   | "changeArrowType"
+  | "changeSnapProp"
   | "changeArrowProperties"
   | "changeOpacity"
   | "changeFontSize"

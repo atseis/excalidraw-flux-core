@@ -12,6 +12,9 @@ export {
   actionChangeBackgroundColor,
   actionChangeBucketFillBackgroundColor,
   actionChangeStrokeWidth,
+  actionChangeStrokeStyle,
+  actionChangeQuickLineStyle,
+  actionApplyLineAnimation,
   actionChangeFillStyle,
   actionChangeSloppiness,
   actionChangeFreedrawMode,
@@ -21,6 +24,7 @@ export {
   actionChangeTextAlign,
   actionChangeVerticalAlign,
   actionChangeArrowProperties,
+  actionChangeArrowType,
 } from "./actionProperties";
 
 export {

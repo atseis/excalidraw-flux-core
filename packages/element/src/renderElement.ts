@@ -84,8 +84,186 @@ import type {
 } from "./types";
 
 import type { RoughCanvas } from "roughjs/bin/canvas";
+import type { Drawable } from "roughjs/bin/core";
 import { isIframeLikeElement } from "@excalidraw/element/typeChecks";
 import { getFreeDrawSvgPath } from "./freedrawPath";
+
+type LegacyLineAnimation = {
+  type: "arrow";
+  style: "dash" | "arrow";
+  speed: number;
+  strokeLineDash?: number[];
+};
+
+const getLegacyLineAnimation = (
+  element: NonDeletedExcalidrawElement,
+): LegacyLineAnimation | null => {
+  if (element.type !== "line" && element.type !== "arrow") {
+    return null;
+  }
+  const animation = element.customData?.animation;
+  if (
+    animation?.type !== "arrow" ||
+    (animation.style !== "dash" && animation.style !== "arrow")
+  ) {
+    return null;
+  }
+  return {
+    type: "arrow",
+    style: animation.style,
+    speed:
+      typeof animation.speed === "number" && Number.isFinite(animation.speed)
+        ? animation.speed
+        : 2,
+    strokeLineDash: Array.isArray(animation.strokeLineDash)
+      ? animation.strokeLineDash
+      : undefined,
+  };
+};
+
+const sampleDrawablePath = (shape: Drawable): [number, number][] => {
+  const ops =
+    shape.sets.find((set) =>
+      set.ops.some(
+        (op) => op.op === "move" || op.op === "lineTo" || op.op === "bcurveTo",
+      ),
+    )?.ops ?? [];
+  const points: [number, number][] = [];
+  let current: [number, number] | null = null;
+
+  const appendSegment = (end: [number, number]) => {
+    if (!current) {
+      current = end;
+      points.push(end);
+      return;
+    }
+    const steps = Math.max(
+      1,
+      Math.ceil(Math.hypot(end[0] - current[0], end[1] - current[1]) / 8),
+    );
+    const start = current;
+    for (let index = 1; index <= steps; index++) {
+      const t = index / steps;
+      points.push([
+        start[0] + (end[0] - start[0]) * t,
+        start[1] + (end[1] - start[1]) * t,
+      ]);
+    }
+    current = end;
+  };
+
+  for (const op of ops) {
+    if (op.op === "move") {
+      current = [op.data[0], op.data[1]];
+      points.push(current);
+    } else if (op.op === "lineTo") {
+      appendSegment([op.data[0], op.data[1]]);
+    } else if (op.op === "bcurveTo" && current) {
+      const start = current;
+      const [c1x, c1y, c2x, c2y, endX, endY] = op.data;
+      const estimatedLength =
+        Math.hypot(c1x - start[0], c1y - start[1]) +
+        Math.hypot(c2x - c1x, c2y - c1y) +
+        Math.hypot(endX - c2x, endY - c2y);
+      const steps = Math.max(6, Math.ceil(estimatedLength / 8));
+      for (let index = 1; index <= steps; index++) {
+        const t = index / steps;
+        const mt = 1 - t;
+        points.push([
+          mt ** 3 * start[0] +
+            3 * mt ** 2 * t * c1x +
+            3 * mt * t ** 2 * c2x +
+            t ** 3 * endX,
+          mt ** 3 * start[1] +
+            3 * mt ** 2 * t * c1y +
+            3 * mt * t ** 2 * c2y +
+            t ** 3 * endY,
+        ]);
+      }
+      current = [endX, endY];
+    }
+  }
+
+  return points;
+};
+
+const drawLegacyArrowAnimation = (
+  element: NonDeletedExcalidrawElement,
+  shape: Drawable,
+  context: CanvasRenderingContext2D,
+  renderConfig: StaticCanvasRenderConfig,
+  animation: LegacyLineAnimation,
+  animationTime: number,
+) => {
+  const points = sampleDrawablePath(shape);
+  if (points.length < 2) {
+    return;
+  }
+
+  const cumulative = [0];
+  for (let index = 1; index < points.length; index++) {
+    cumulative.push(
+      cumulative[index - 1] +
+        Math.hypot(
+          points[index][0] - points[index - 1][0],
+          points[index][1] - points[index - 1][1],
+        ),
+    );
+  }
+  const totalLength = cumulative[cumulative.length - 1];
+  if (!totalLength) {
+    return;
+  }
+
+  const spacing = Math.max(28, element.strokeWidth * 12);
+  const phase = ((animationTime * animation.speed) / 24) % spacing;
+  const markerSize = Math.max(5, element.strokeWidth * 2.5);
+  const color = applyDarkModeFilter(
+    element.strokeColor,
+    renderConfig.theme === THEME.DARK,
+  );
+
+  const pointAtDistance = (target: number) => {
+    let index = 1;
+    while (index < cumulative.length && cumulative[index] < target) {
+      index++;
+    }
+    index = Math.min(index, cumulative.length - 1);
+    const startDistance = cumulative[index - 1];
+    const segmentLength = cumulative[index] - startDistance || 1;
+    const t = (target - startDistance) / segmentLength;
+    return {
+      x: points[index - 1][0] + (points[index][0] - points[index - 1][0]) * t,
+      y: points[index - 1][1] + (points[index][1] - points[index - 1][1]) * t,
+      angle: Math.atan2(
+        points[index][1] - points[index - 1][1],
+        points[index][0] - points[index - 1][0],
+      ),
+    };
+  };
+
+  context.save();
+  context.fillStyle = color;
+  for (
+    let distanceAlongPath = phase;
+    distanceAlongPath < totalLength;
+    distanceAlongPath += spacing
+  ) {
+    const marker = pointAtDistance(distanceAlongPath);
+    context.save();
+    context.translate(marker.x, marker.y);
+    context.rotate(marker.angle);
+    context.beginPath();
+    context.moveTo(markerSize, 0);
+    context.lineTo(-markerSize * 0.75, -markerSize * 0.65);
+    context.lineTo(-markerSize * 0.35, 0);
+    context.lineTo(-markerSize * 0.75, markerSize * 0.65);
+    context.closePath();
+    context.fill();
+    context.restore();
+  }
+  context.restore();
+};
 
 const isPendingImageElement = (
   element: ExcalidrawElement,
@@ -325,6 +503,13 @@ const drawElementOnCanvas = (
   context: CanvasRenderingContext2D,
   renderConfig: StaticCanvasRenderConfig,
 ) => {
+  const animation = getLegacyLineAnimation(element);
+  const animationTime = renderConfig.isExporting
+    ? 0
+    : typeof performance === "undefined"
+    ? Date.now()
+    : performance.now();
+
   switch (element.type) {
     case "rectangle":
     case "iframe":
@@ -343,8 +528,34 @@ const drawElementOnCanvas = (
       context.lineCap = "round";
 
       ShapeCache.generateElementShape(element, renderConfig).forEach(
-        (shape) => {
+        (shape, index) => {
+          if (animation?.style === "dash" && index === 0) {
+            shape.options.strokeLineDash = animation.strokeLineDash?.filter(
+              (value) =>
+                typeof value === "number" &&
+                Number.isFinite(value) &&
+                value > 0,
+            ) ?? [8, 8];
+            shape.options.strokeLineDashOffset = -(
+              (animationTime * animation.speed) /
+              24
+            );
+          }
           rc.draw(shape);
+          if (
+            animation?.style === "arrow" &&
+            index === 0 &&
+            !renderConfig.isExporting
+          ) {
+            drawLegacyArrowAnimation(
+              element,
+              shape,
+              context,
+              renderConfig,
+              animation,
+              animationTime,
+            );
+          }
         },
       );
       break;
@@ -357,7 +568,8 @@ const drawElementOnCanvas = (
 
       for (const shape of shapes) {
         if (typeof shape === "string") {
-          const { path, fillStyle } = (() => { //zsviczian
+          const { path, fillStyle } = (() => {
+            //zsviczian
             const path = element.customData?.strokeOptions
               ? new Path2D(getFreeDrawSvgPath(element))
               : new Path2D(shape);
@@ -434,8 +646,10 @@ const drawElementOnCanvas = (
 
         const shouldInvertImage =
           renderConfig.theme === THEME.DARK &&
-          ((cacheEntry?.mimeType === MIME_TYPES.svg && !element.customData?.doNotInvertSVGInDarkMode) ||
-            (!!element.customData?.pdfPageViewProps && (element.customData?.invertBitmapInDarkmode ?? true)) ||
+          ((cacheEntry?.mimeType === MIME_TYPES.svg &&
+            !element.customData?.doNotInvertSVGInDarkMode) ||
+            (!!element.customData?.pdfPageViewProps &&
+              (element.customData?.invertBitmapInDarkmode ?? true)) ||
             !!element.customData?.invertBitmapInDarkmode); //zsviczian
 
         if (shouldInvertImage && isIOS) {
@@ -774,9 +988,14 @@ export const renderElement = (
   switch (element.type) {
     case "magicframe":
     case "frame": {
-      if ( //zsviczian
-        appState.frameRendering.enabled && appState.frameRendering.outline &&
-        !(!appState.frameRendering.markerEnabled && element.frameRole === "marker")
+      if (
+        //zsviczian
+        appState.frameRendering.enabled &&
+        appState.frameRendering.outline &&
+        !(
+          !appState.frameRendering.markerEnabled &&
+          element.frameRole === "marker"
+        )
       ) {
         context.save();
         context.translate(
@@ -811,7 +1030,12 @@ export const renderElement = (
           context.setLineDash([dash, gap]);
         }
 
-        if (FRAME_STYLE.radius && context.roundRect && element.frameRole !== "marker") { //zsviczian
+        if (
+          FRAME_STYLE.radius &&
+          context.roundRect &&
+          element.frameRole !== "marker"
+        ) {
+          //zsviczian
           context.beginPath();
           context.roundRect(
             0,
@@ -874,7 +1098,7 @@ export const renderElement = (
     case "text":
     case "iframe":
     case "embeddable": {
-      if (renderConfig.isExporting) {
+      if (renderConfig.isExporting || getLegacyLineAnimation(element)) {
         const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
         const centerX = (x1 + x2) / 2;
         const centerY = (y1 + y2) / 2;

@@ -8,6 +8,7 @@ import { atom, useAtom } from "../editor-jotai";
 import { useApp, useExcalidrawContainer } from "./App";
 import { positionElementBesideCursor } from "./positionElementBesideCursor";
 import {
+  curveArrowIcon,
   LineIcon,
   sharpArrowIcon,
   roundArrowIcon,
@@ -41,6 +42,8 @@ export const cursorHintAtom = atom<{
 const getArrowTypeIcon = (arrowType: AppState["currentItemArrowType"]) =>
   arrowType === ARROW_TYPE.elbow
     ? elbowArrowIcon
+    : arrowType === ARROW_TYPE.curve
+    ? curveArrowIcon
     : arrowType === ARROW_TYPE.round
     ? roundArrowIcon
     : sharpArrowIcon;

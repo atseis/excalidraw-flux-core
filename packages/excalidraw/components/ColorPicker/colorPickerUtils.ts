@@ -39,6 +39,7 @@ export const colorPickerHotkeyBindings = [
   ["q", "w", "e", "r", "t"],
   ["a", "s", "d", "f", "g"],
   ["z", "x", "c", "v", "b"],
+  ["n", "l", "m", "o", "p"], // zsviczian -- expanded mnemonic palette row
 ].flat();
 
 export const isCustomColor = ({

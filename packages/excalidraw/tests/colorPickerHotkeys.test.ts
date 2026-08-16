@@ -1,4 +1,7 @@
-import { COLOR_PALETTE } from "@excalidraw/common";
+import {
+  COLOR_PALETTE,
+  DEFAULT_ELEMENT_STROKE_COLOR_PALETTE,
+} from "@excalidraw/common";
 
 import type { ColorPaletteCustom } from "@excalidraw/common";
 
@@ -9,18 +12,24 @@ const handlerArgs = (
   palette: ColorPaletteCustom,
   onChange: (color: string) => void,
   excludedColors?: readonly string[],
+  options: {
+    code?: string;
+    shiftKey?: boolean;
+    color?: string | null;
+  } = {},
 ) => ({
   event: {
     key,
+    code: options.code ?? key,
     ctrlKey: false,
     metaKey: false,
-    shiftKey: false,
+    shiftKey: options.shiftKey ?? false,
     preventDefault: () => {},
     stopPropagation: () => {},
   } as unknown as React.KeyboardEvent,
   activeColorPickerSection: null,
   palette,
-  color: null,
+  color: options.color ?? null,
   onChange,
   customColors: [],
   setActiveColorPickerSection: () => {},
@@ -79,4 +88,43 @@ describe("color picker hotkeys", () => {
     expect(handled).toBe(true);
     expect(onChange).toHaveBeenCalledWith("#ff0000");
   });
+
+  it.each([
+    ["n", "navy"],
+    ["l", "lime"],
+    ["m", "mint"],
+    ["o", "olive"],
+    ["p", "plum"],
+  ] as const)("selects the expanded %s color family", (key, colorName) => {
+    const onChange = vi.fn();
+    const handled = colorPickerKeyNavHandler(
+      handlerArgs(key, DEFAULT_ELEMENT_STROKE_COLOR_PALETTE, onChange),
+    );
+
+    expect(handled).toBe(true);
+    expect(onChange).toHaveBeenCalledWith(COLOR_PALETTE[colorName][1]);
+  });
+
+  it.each([0, 1, 2, 3, 4] as const)(
+    "keeps Shift+%s shade selection for an expanded color",
+    (shade) => {
+      const onChange = vi.fn();
+      const handled = colorPickerKeyNavHandler(
+        handlerArgs(
+          "!",
+          DEFAULT_ELEMENT_STROKE_COLOR_PALETTE,
+          onChange,
+          undefined,
+          {
+            code: `Digit${shade + 1}`,
+            shiftKey: true,
+            color: COLOR_PALETTE.navy[1],
+          },
+        ),
+      );
+
+      expect(handled).toBe(true);
+      expect(onChange).toHaveBeenCalledWith(COLOR_PALETTE.navy[shade]);
+    },
+  );
 });

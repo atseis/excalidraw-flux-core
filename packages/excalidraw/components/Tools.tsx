@@ -34,6 +34,8 @@ import {
 import type {
   AppClassProperties,
   AppState,
+  ConfigurableToolShortcutType,
+  ToolShortcutPreferences,
   ToolType,
   UIAppState,
 } from "../types";
@@ -164,7 +166,32 @@ export const TOGGLE_TOOLS: readonly (ToolType | "custom")[] = (
   Object.keys(TOOLS) as ToolbarToolType[]
 ).filter((type) => TOOLS[type].toggle);
 
-export const getToolLetter = (type: ToolbarToolType) => {
+const isConfigurableToolShortcut = (
+  type: ToolbarToolType,
+): type is ConfigurableToolShortcutType =>
+  type === "eraser" ||
+  type === "selection" ||
+  type === "rectangle" ||
+  type === "diamond" ||
+  type === "ellipse" ||
+  type === "arrow" ||
+  type === "line" ||
+  type === "freedraw" ||
+  type === "text";
+
+export const isToolShortcutEnabled = (
+  type: ToolbarToolType,
+  kind: "numeric" | "letter",
+  preferences?: ToolShortcutPreferences,
+) => !isConfigurableToolShortcut(type) || preferences?.[type]?.[kind] !== false;
+
+export const getToolLetter = (
+  type: ToolbarToolType,
+  preferences?: ToolShortcutPreferences,
+) => {
+  if (!isToolShortcutEnabled(type, "letter", preferences)) {
+    return undefined;
+  }
   const { letterKey, shiftKey } = TOOLS[type];
   if (!letterKey) {
     return letterKey;
@@ -176,12 +203,33 @@ export const getToolLetter = (type: ToolbarToolType) => {
 };
 
 /** human-readable shortcut hint, e.g. "R or 2", used in tooltips & aria */
-export const getToolShortcut = (type: ToolbarToolType) => {
-  const letter = getToolLetter(type);
+export const getToolShortcut = (
+  type: ToolbarToolType,
+  preferences?: ToolShortcutPreferences,
+) => {
+  const letter = getToolLetter(type, preferences);
   const { numericKey } = TOOLS[type];
-  return letter && numericKey != null
-    ? `${letter} ${t("helpDialog.or")} ${numericKey}`
-    : `${letter || numericKey}`;
+  const numeric = isToolShortcutEnabled(type, "numeric", preferences)
+    ? numericKey
+    : undefined;
+  return letter && numeric != null
+    ? `${letter} ${t("helpDialog.or")} ${numeric}`
+    : `${letter || numeric || ""}`;
+};
+
+export const getToolShortcutKeys = (
+  type: ToolbarToolType,
+  preferences?: ToolShortcutPreferences,
+) => {
+  const { numericKey } = TOOLS[type];
+  const letter = getToolLetter(type, preferences);
+  return [
+    ...(letter ? [letter] : []),
+    ...(numericKey != null &&
+    isToolShortcutEnabled(type, "numeric", preferences)
+      ? [numericKey]
+      : []),
+  ];
 };
 
 export const findShapeByKey = (
@@ -201,8 +249,19 @@ export const findShapeByKey = (
       continue;
     }
     if (
-      (numericKey != null && key === numericKey) ||
+      (numericKey != null &&
+        isToolShortcutEnabled(
+          type,
+          "numeric",
+          app.props.toolShortcutPreferences,
+        ) &&
+        key === numericKey) ||
       (letterKey &&
+        isToolShortcutEnabled(
+          type,
+          "letter",
+          app.props.toolShortcutPreferences,
+        ) &&
         (typeof letterKey === "string"
           ? letterKey === lowerKey
           : letterKey.includes(lowerKey)))
@@ -273,7 +332,13 @@ const createToolButton = (
     hideShortcut,
   }: ToolButtonComponentProps) => {
     const label = capitalizeString(t(`toolBar.${type}`));
-    const shortcut = hideShortcut ? null : getToolShortcut(shortcutType);
+    const shortcut = hideShortcut
+      ? null
+      : getToolShortcut(shortcutType, app.props.toolShortcutPreferences);
+    const shortcutKeys = getToolShortcutKeys(
+      shortcutType,
+      app.props.toolShortcutPreferences,
+    );
 
     return (
       <IconButton
@@ -286,7 +351,7 @@ const createToolButton = (
         keyBindingLabel={
           hideKeyBinding || hideShortcut
             ? undefined
-            : TOOLS[shortcutType].numericKey || getToolLetter(shortcutType)
+            : shortcutKeys.find((key) => /^\d$/.test(key)) || shortcutKeys[0]
         }
         aria-label={label}
         aria-keyshortcuts={shortcut ?? undefined}

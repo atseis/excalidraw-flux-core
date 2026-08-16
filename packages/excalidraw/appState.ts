@@ -41,6 +41,7 @@ export const getDefaultAppState = (): Omit<
     currentItemStrokeColor: DEFAULT_ELEMENT_PROPS.strokeColor,
     currentItemRoundness: isTestEnv() ? "sharp" : "round",
     currentItemArrowType: ARROW_TYPE.round,
+    currentItemSnap: "none",
     currentItemStrokeStyle: DEFAULT_ELEMENT_PROPS.strokeStyle,
     currentItemStrokeWidth: undefined, //zsviczian
     currentItemStrokeWidthKey: DEFAULT_ELEMENT_STROKE_WIDTH_KEY,
@@ -196,6 +197,11 @@ const APP_STATE_STORAGE_CONF = (<
     server: false,
   },
   currentItemArrowType: {
+    browser: true,
+    export: false,
+    server: false,
+  },
+  currentItemSnap: {
     browser: true,
     export: false,
     server: false,

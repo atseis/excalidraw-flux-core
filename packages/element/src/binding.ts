@@ -64,6 +64,12 @@ import {
   deconstructRectanguloidElement,
   projectFixedPointOntoDiagonal,
 } from "./utils";
+import {
+  getArrowSnapMode,
+  offsetArrowSnapPointToOrbit,
+  snapPointToConnectionPoint,
+  snapPointToElementEdge,
+} from "./ymjrArrowFeatures";
 
 import { isNonDeletedElement } from ".";
 
@@ -618,27 +624,58 @@ export const getBindingStrategyForDraggingBindingElementEndpoints = (
     gridSize?: NullableGridSize;
   },
 ): { start: BindingStrategy; end: BindingStrategy } => {
-  if (getFeatureFlag("COMPLEX_BINDINGS")) {
-    return getBindingStrategyForDraggingBindingElementEndpoints_complex(
-      arrow,
-      draggingPoints,
-      elementsMap,
-      elements,
-      appState,
-      opts,
-    );
+  const strategy = getFeatureFlag("COMPLEX_BINDINGS")
+    ? getBindingStrategyForDraggingBindingElementEndpoints_complex(
+        arrow,
+        draggingPoints,
+        elementsMap,
+        elements,
+        appState,
+        opts,
+      )
+    : getBindingStrategyForDraggingBindingElementEndpoints_simple(
+        arrow,
+        draggingPoints,
+        screenPointerX,
+        screenPointerY,
+        elementsMap,
+        elements,
+        appState,
+        opts,
+      );
+
+  const snapMode = getArrowSnapMode(arrow);
+  if (snapMode === "none") {
+    return strategy;
   }
 
-  return getBindingStrategyForDraggingBindingElementEndpoints_simple(
-    arrow,
-    draggingPoints,
-    screenPointerX,
-    screenPointerY,
-    elementsMap,
-    elements,
-    appState,
-    opts,
-  );
+  const snap = (bindingStrategy: BindingStrategy): BindingStrategy => {
+    if (bindingStrategy.mode === null || bindingStrategy.mode === undefined) {
+      return bindingStrategy;
+    }
+    const focusPoint =
+      snapMode === "points"
+        ? snapPointToConnectionPoint(
+            bindingStrategy.element,
+            bindingStrategy.focusPoint,
+            elementsMap,
+          )
+        : snapPointToElementEdge(
+            bindingStrategy.element,
+            bindingStrategy.focusPoint,
+            elementsMap,
+          );
+    return {
+      ...bindingStrategy,
+      // zsviczian -- elbow endpoints remain external orbit bindings in the
+      // authoritative YMJR scene; only ordinary arrows bind inside exactly at
+      // the selected Points/Edge focus.
+      mode: isElbowArrow(arrow) ? bindingStrategy.mode : "inside",
+      focusPoint,
+    };
+  };
+
+  return { start: snap(strategy.start), end: snap(strategy.end) };
 };
 
 const getBindingStrategyForDraggingBindingElementEndpoints_simple = (
@@ -1141,6 +1178,15 @@ export const bindBindingElement = (
   let binding: FixedPointBinding;
 
   if (isElbowArrow(arrow)) {
+    const snapFocusPoint =
+      focusPoint && getArrowSnapMode(arrow) !== "none"
+        ? offsetArrowSnapPointToOrbit(
+            hoveredElement,
+            focusPoint,
+            getBindingGap(hoveredElement, arrow),
+            elementsMap,
+          )
+        : undefined;
     binding = {
       elementId: hoveredElement.id,
       mode: "orbit",
@@ -1151,6 +1197,7 @@ export const bindBindingElement = (
         elementsMap,
         shouldSnapToOutline,
         isMidpointSnappingEnabled,
+        snapFocusPoint,
       ),
     };
   } else {
@@ -2100,6 +2147,7 @@ export const calculateFixedPointForElbowArrowBinding = (
   elementsMap: ElementsMap,
   shouldSnapToOutline = true,
   isMidpointSnappingEnabled = true,
+  snapFocusPoint?: GlobalPoint,
 ): { fixedPoint: FixedPoint } => {
   const bounds = [
     hoveredElement.x,
@@ -2107,7 +2155,9 @@ export const calculateFixedPointForElbowArrowBinding = (
     hoveredElement.x + hoveredElement.width,
     hoveredElement.y + hoveredElement.height,
   ] as Bounds;
-  const snappedPoint = shouldSnapToOutline
+  const snappedPoint = snapFocusPoint
+    ? snapFocusPoint
+    : shouldSnapToOutline
     ? bindPointToSnapToElementOutline(
         linearElement,
         hoveredElement,

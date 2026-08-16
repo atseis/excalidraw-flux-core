@@ -71,6 +71,60 @@ const StaticCanvas = (props: StaticCanvasProps) => {
     );
   });
 
+  useEffect(() => {
+    // zsviczian -- legacy `add animation for line` scripts store a render
+    // contract in customData.animation. Repaint only while at least one
+    // supported animated line is visible; exports remain static snapshots.
+    const hasAnimatedLine = props.visibleElements.some((element) => {
+      if (element.type !== "line" && element.type !== "arrow") {
+        return false;
+      }
+      const animation = element.customData?.animation;
+      return (
+        animation?.type === "arrow" &&
+        (animation.style === "dash" || animation.style === "arrow")
+      );
+    });
+    if (!hasAnimatedLine) {
+      return;
+    }
+
+    const ownerDocument = props.canvas.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    if (ownerWindow.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    let frameId = 0;
+    const renderFrame = () => {
+      if (!ownerDocument.hidden) {
+        renderStaticScene({
+          canvas: props.canvas,
+          rc: props.rc,
+          scale: props.scale,
+          elementsMap: props.elementsMap,
+          allElementsMap: props.allElementsMap,
+          visibleElements: props.visibleElements,
+          appState: props.appState,
+          renderConfig: props.renderConfig,
+        });
+      }
+      frameId = ownerWindow.requestAnimationFrame(renderFrame);
+    };
+    frameId = ownerWindow.requestAnimationFrame(renderFrame);
+
+    return () => ownerWindow.cancelAnimationFrame(frameId);
+  }, [
+    props.allElementsMap,
+    props.appState,
+    props.canvas,
+    props.elementsMap,
+    props.rc,
+    props.renderConfig,
+    props.scale,
+    props.visibleElements,
+  ]);
+
   return <div className="excalidraw__canvas-wrapper" ref={wrapperRef} />;
 };
 

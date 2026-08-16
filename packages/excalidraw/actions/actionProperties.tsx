@@ -136,10 +136,18 @@ import {
   ArrowheadCircleOutlineIcon,
   ArrowheadDiamondIcon,
   ArrowheadDiamondOutlineIcon,
+  ArrowheadChevronIcon,
+  ArrowheadChevronOutlineIcon,
+  ArrowheadBlockIcon,
+  ArrowheadBlockOutlineIcon,
   fontSizeIcon,
   sharpArrowIcon,
   roundArrowIcon,
   elbowArrowIcon,
+  curveArrowIcon,
+  snapOffIcon,
+  snapPointsIcon,
+  snapEdgeIcon,
   ArrowheadCardinalityExactlyOneIcon,
   ArrowheadCardinalityManyIcon,
   ArrowheadCardinalityOneIcon,
@@ -417,7 +425,7 @@ export const actionChangeStrokeColor = register<
           true,
           (hasSelection) =>
             !hasSelection ? appState.currentItemStrokeColor : null,
-          )}
+        )}
         onChange={(color) => updateData({ currentItemStrokeColor: color })}
         elements={elements}
         appState={appState}
@@ -507,16 +515,14 @@ export const actionChangeBackgroundColor = register<
           true,
           (hasSelection) =>
             !hasSelection ? appState.currentItemBackgroundColor : null,
-          )}
-        onChange={(color) =>
-          updateData({ currentItemBackgroundColor: color })
-        }
+        )}
+        onChange={(color) => updateData({ currentItemBackgroundColor: color })}
         elements={elements}
         appState={appState}
         updateData={updateData}
       />
     </>
-  )
+  ),
 });
 
 export const actionChangeBucketFillBackgroundColor = register<
@@ -935,6 +941,85 @@ export const actionChangeStrokeStyle = register<
   ),
 });
 
+// zsviczian START -- keep the host-only `ls`/`ld`/`lt` selector explicit:
+// selecting an ordinary stroke style also exits any animation previously
+// installed by `la` or by the advanced legacy script. Other custom data must
+// survive this quick style change.
+export const actionChangeQuickLineStyle = register<
+  ExcalidrawElement["strokeStyle"]
+>({
+  name: "changeQuickLineStyle",
+  label: "labels.strokeStyle",
+  trackEvent: false,
+  perform: (elements, appState, value) => ({
+    elements: changeProperty(elements, appState, (element) => {
+      if (
+        (!isLineElement(element) && !isArrowElement(element)) ||
+        !element.customData?.animation
+      ) {
+        return newElementWith(element, { strokeStyle: value });
+      }
+
+      const customData = { ...element.customData };
+      delete customData.animation;
+      return newElementWith(element, {
+        strokeStyle: value,
+        customData,
+      });
+    }),
+    appState: { ...appState, currentItemStrokeStyle: value },
+    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  }),
+});
+
+// Provide the dialog-free YMJR-compatible `la` shortcut while preserving the
+// original script for advanced animation parameters.
+const QUICK_LINE_ANIMATION_DASHES = {
+  dashed: [8, 8],
+  dotted: [1.5, 6],
+} as const;
+
+export const actionApplyLineAnimation = register({
+  name: "applyLineAnimation",
+  label: "Apply line animation",
+  trackEvent: false,
+  perform: (elements, appState) => {
+    let changed = false;
+    const nextElements = changeProperty(elements, appState, (element) => {
+      if (
+        (!isLineElement(element) && !isArrowElement(element)) ||
+        (element.strokeStyle !== "dashed" &&
+          element.strokeStyle !== "dotted")
+      ) {
+        return element;
+      }
+
+      changed = true;
+      return newElementWith(element, {
+        customData: {
+          ...element.customData,
+          animation: {
+            type: "arrow",
+            style: "dash",
+            strokeLineDash: [
+              ...QUICK_LINE_ANIMATION_DASHES[element.strokeStyle],
+            ],
+            speed: 2,
+          },
+        },
+      });
+    });
+
+    return changed
+      ? {
+          elements: nextElements,
+          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+        }
+      : false;
+  },
+});
+// zsviczian END
+
 export const actionChangeOpacity = register<ExcalidrawElement["opacity"]>({
   name: "changeOpacity",
   label: "labels.opacity",
@@ -1008,8 +1093,8 @@ const fibonacciValues = [
 //zsviczian
 const normalValues = [
   [
-    136.67, 91.13, 60.74, 40.51, 26.98, 18.01, 12, 8.01, 5.34, 3.54, 2.36,
-    1.59, 1.04, 0.72, 0.48,
+    136.67, 91.13, 60.74, 40.51, 26.98, 18.01, 12, 8.01, 5.34, 3.54, 2.36, 1.59,
+    1.04, 0.72, 0.48,
   ],
   [
     182.22, 121.46, 80, 53, 35.99, 23.96, 16, 10.68, 7.1, 4.74, 3.16, 2.11,
@@ -1184,28 +1269,36 @@ export const actionChangeFontSize = register<ExcalidrawTextElement["fontSize"]>(
               options={[
                 {
                   value: FONT_SIZES.xs,
-                  text: `${t("labels.extraSmall")}\nSHIFT: zoomed, ALT/OPT: Fibonacci`, //zsviczian
+                  text: `${t(
+                    "labels.extraSmall",
+                  )}\nSHIFT: zoomed, ALT/OPT: Fibonacci`, //zsviczian
                   icon: FontSizeExtraSmallIcon,
                   testId: "fontSize-extraSmall",
                   active: isExtraSmall ? true : undefined, //zsviczian
                 },
                 {
                   value: FONT_SIZES.sm,
-                  text: `${t("labels.small")}\nSHIFT: zoomed, ALT/OPT: Fibonacci`, //zsviczian
+                  text: `${t(
+                    "labels.small",
+                  )}\nSHIFT: zoomed, ALT/OPT: Fibonacci`, //zsviczian
                   icon: FontSizeSmallIcon,
                   testId: "fontSize-small",
                   active: isSmall ? true : undefined, //zsviczian
                 },
                 {
                   value: FONT_SIZES.md,
-                  text: `${t("labels.medium")}\nSHIFT: zoomed, ALT/OPT: Fibonacci`, //zsviczian
+                  text: `${t(
+                    "labels.medium",
+                  )}\nSHIFT: zoomed, ALT/OPT: Fibonacci`, //zsviczian
                   icon: FontSizeMediumIcon,
                   testId: "fontSize-medium",
                   active: isMedium ? true : undefined, //zsviczian
                 },
                 {
                   value: FONT_SIZES.lg,
-                  text: `${t("labels.large")}\nSHIFT: zoomed, ALT/OPT: Fibonacci`, //zsviczian
+                  text: `${t(
+                    "labels.large",
+                  )}\nSHIFT: zoomed, ALT/OPT: Fibonacci`, //zsviczian
                   icon: FontSizeLargeIcon,
                   testId: "fontSize-large",
                   active: isLarge ? true : undefined, //zsviczian
@@ -1274,7 +1367,7 @@ export const actionChangeFontSize = register<ExcalidrawTextElement["fontSize"]>(
         </fieldset>
       );
     },
-  }
+  },
 );
 
 export const actionDecreaseFontSize = register({
@@ -2032,6 +2125,37 @@ const getArrowheadOptions = (flip: boolean) => {
           },
         ],
       },
+      // zsviczian -- keep the independently reimplemented YMJR-parity
+      // arrowheads immediately discoverable in the native picker.
+      {
+        name: t("labels.custom_arrowheads"),
+        options: [
+          {
+            value: "chevron",
+            text: t("labels.arrowhead_chevron"),
+            icon: <ArrowheadChevronIcon flip={flip} />,
+            keyBinding: "t",
+          },
+          {
+            value: "chevron_outline",
+            text: t("labels.arrowhead_chevron_outline"),
+            icon: <ArrowheadChevronOutlineIcon flip={flip} />,
+            keyBinding: "y",
+          },
+          {
+            value: "block_arrow",
+            text: t("labels.arrowhead_block_arrow"),
+            icon: <ArrowheadBlockIcon flip={flip} />,
+            keyBinding: "b",
+          },
+          {
+            value: "block_arrow_outline",
+            text: t("labels.arrowhead_block_arrow_outline"),
+            icon: <ArrowheadBlockOutlineIcon flip={flip} />,
+            keyBinding: "n",
+          },
+        ],
+      },
     ],
     hiddenSections: [
       {
@@ -2116,7 +2240,7 @@ const getArrowheadOptions = (flip: boolean) => {
 
 export const actionChangeArrowhead = register<{
   position: "start" | "end";
-  type: Arrowhead;
+  type: Arrowhead | null; // zsviczian -- host shortcuts can explicitly clear an Arrowhead
 }>({
   name: "changeArrowhead",
   label: "Change arrowheads",
@@ -2220,8 +2344,11 @@ export const actionChangeArrowProperties = register({
   PanelComponent: ({ elements, appState, updateData, app, renderAction }) => {
     return (
       <div className="selected-shape-actions">
-        {renderAction("changeArrowhead")}
+        {/* zsviczian -- surface the two YMJR-parity controls before the tall
+        arrowhead picker in compact layouts. */}
         {renderAction("changeArrowType")}
+        {renderAction("changeSnapProp")}
+        {renderAction("changeArrowhead")}
       </div>
     );
   },
@@ -2282,8 +2409,21 @@ export const actionChangeArrowType = register<keyof typeof ARROW_TYPE>({
                   elementsMap,
                 ),
               ]
+            : value === ARROW_TYPE.curve
+            ? // zsviczian -- YMJR Automatic curves serialize only their two
+              // endpoints; retaining hidden intermediate points resurrects
+              // obsolete geometry when the arrow type is changed again.
+              [el.points[0], el.points[el.points.length - 1]]
             : el.points,
       });
+
+      const customData = { ...newElement.customData };
+      if (value === ARROW_TYPE.curve) {
+        customData.curveArrow = true;
+      } else {
+        delete customData.curveArrow;
+      }
+      newElement = newElementWith(newElement, { customData });
 
       if (isElbowArrow(newElement)) {
         newElement.fixedSegments = null;
@@ -2443,6 +2583,12 @@ export const actionChangeArrowType = register<keyof typeof ARROW_TYPE>({
                 icon: elbowArrowIcon,
                 testId: "elbow-arrow",
               },
+              {
+                value: ARROW_TYPE.curve,
+                text: t("labels.arrowtype_curve"),
+                icon: curveArrowIcon,
+                testId: "curve-arrow",
+              },
             ]}
             value={getFormValue(
               elements,
@@ -2451,6 +2597,8 @@ export const actionChangeArrowType = register<keyof typeof ARROW_TYPE>({
                 if (isArrowElement(element)) {
                   return element.elbowed
                     ? ARROW_TYPE.elbow
+                    : element.customData?.curveArrow
+                    ? ARROW_TYPE.curve
                     : element.roundness
                     ? ARROW_TYPE.round
                     : ARROW_TYPE.sharp;
@@ -2470,6 +2618,73 @@ export const actionChangeArrowType = register<keyof typeof ARROW_TYPE>({
   },
 });
 
+export const actionChangeSnapProp = register<AppState["currentItemSnap"]>({
+  name: "changeSnapProp",
+  label: "labels.snap_points",
+  trackEvent: false,
+  perform: (elements, appState, value) => ({
+    elements: changeProperty(elements, appState, (element) => {
+      if (!isArrowElement(element)) {
+        return element;
+      }
+      const customData = { ...element.customData };
+      if (value === "none") {
+        delete customData.snap;
+      } else {
+        customData.snap = value;
+      }
+      return newElementWith(element, { customData });
+    }),
+    appState: { ...appState, currentItemSnap: value },
+    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  }),
+  PanelComponent: ({ elements, appState, updateData, app }) => (
+    <fieldset>
+      <legend>{t("labels.snap_points")}</legend>
+      <div className="buttonList">
+        <RadioSelection
+          group="arrow-snap-mode"
+          options={[
+            {
+              value: "none",
+              text: t("labels.snap_off"),
+              icon: snapOffIcon,
+              testId: "snap-off",
+            },
+            {
+              value: "points",
+              text: t("labels.snap_points_mode"),
+              icon: snapPointsIcon,
+              testId: "snap-points",
+            },
+            {
+              value: "edge",
+              text: t("labels.snap_edge"),
+              icon: snapEdgeIcon,
+              testId: "snap-edge",
+            },
+          ]}
+          value={getFormValue(
+            elements,
+            app,
+            (element) => {
+              if (!isArrowElement(element)) {
+                return null;
+              }
+              const snap = element.customData?.snap;
+              return snap === true ? "points" : snap || "none";
+            },
+            (element) => isArrowElement(element),
+            (hasSelection) =>
+              hasSelection ? null : appState.currentItemSnap || "none",
+          )}
+          onChange={(value) => updateData(value)}
+        />
+      </div>
+    </fieldset>
+  ),
+});
+
 // zsviczian
 export const actionToggleFrameRole = register({
   name: "toggleFrameRole",
@@ -2481,7 +2696,8 @@ export const actionToggleFrameRole = register({
     const frames = selected.filter(
       (el) => el.type === "frame",
     ) as ExcalidrawFrameElement[];
-    const onlyFramesSelected = selected.length > 0 && selected.length === frames.length;
+    const onlyFramesSelected =
+      selected.length > 0 && selected.length === frames.length;
 
     if (onlyFramesSelected) {
       const selectedIds = new Set(selected.map((el) => el.id));
@@ -2515,7 +2731,7 @@ export const actionToggleFrameRole = register({
     };
   },
   predicate: (_elements, appState, _props, app) => {
-    if(appState.activeTool.type === "frame") {
+    if (appState.activeTool.type === "frame") {
       return true;
     }
     const selected = app.scene.getSelectedElements(appState);
@@ -2529,7 +2745,8 @@ export const actionToggleFrameRole = register({
     const frames = selected.filter(
       (el) => el.type === "frame",
     ) as ExcalidrawFrameElement[];
-    const onlyFramesSelected = selected.length > 0 && selected.length === frames.length;
+    const onlyFramesSelected =
+      selected.length > 0 && selected.length === frames.length;
 
     const isMarker = onlyFramesSelected
       ? frames.every((el) => el.frameRole === "marker")

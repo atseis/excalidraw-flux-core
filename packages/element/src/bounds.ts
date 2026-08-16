@@ -48,6 +48,10 @@ import {
 } from "./utils";
 import { intersectElementWithLineSegment } from "./collision";
 import { elementOverlapsWithFrame, getContainingFrame } from "./frame";
+import {
+  getBlockArrowPolygon,
+  getCurveArrowGeometry,
+} from "./ymjrArrowFeatures";
 
 import type { Drawable, Op } from "roughjs/bin/core";
 import type { Point as RoughPoint } from "roughjs/bin/geometry";
@@ -713,7 +717,12 @@ const CROWFOOT_ARROWHEAD_SIZE = 15;
 export const getArrowheadSize = (arrowhead: Arrowhead): number => {
   switch (arrowhead) {
     case "arrow":
+    case "chevron":
+    case "chevron_outline":
       return 25;
+    case "block_arrow":
+    case "block_arrow_outline":
+      return 30;
     case "diamond":
     case "diamond_outline":
       return 12;
@@ -736,6 +745,8 @@ export const getArrowheadAngle = (arrowhead: Arrowhead): Degrees => {
     case "bar":
       return 90 as Degrees;
     case "arrow":
+    case "chevron":
+    case "chevron_outline":
       return 20 as Degrees;
     default:
       return 25 as Degrees;
@@ -793,14 +804,35 @@ export const getArrowheadPoints = (
     3 * Math.pow(t, 2) * (1 - t) * p1[idx] +
     p0[idx] * Math.pow(t, 3);
 
-  // Ee know the last point of the arrow (or the first, if start arrowhead).
-  const [x2, y2] = position === "start" ? p0 : p3;
+  // We know the last point of the arrow (or the first, if start arrowhead).
+  let [x2, y2] = position === "start" ? p0 : p3;
 
   // By using cubic bezier equation (B(t)) and the given parameters,
   // we calculate a point that is closer to the last point.
   // The value 0.3 is chosen arbitrarily and it works best for all
   // the tested cases.
-  const [x1, y1] = [equation(0.3, 0), equation(0.3, 1)];
+  let [x1, y1] = [equation(0.3, 0), equation(0.3, 1)];
+
+  // zsviczian -- Automatic Curve is a deterministic cubic, while the first
+  // drawable passed above contains RoughJS-perturbed control points. Deriving
+  // a marker direction from those drawing ops can rotate ordinary arrowheads
+  // away from the actual endpoint tangent. Use the canonical cubic controls
+  // for both endpoints; Block arrows already use the same geometry through
+  // getBlockArrowPolygon().
+  const automaticCurveGeometry =
+    isArrowElement(element) && element.customData?.curveArrow
+      ? getCurveArrowGeometry(element)
+      : null;
+  if (automaticCurveGeometry) {
+    [x2, y2] =
+      position === "start"
+        ? automaticCurveGeometry.start
+        : automaticCurveGeometry.end;
+    [x1, y1] =
+      position === "start"
+        ? automaticCurveGeometry.startControl
+        : automaticCurveGeometry.endControl;
+  }
 
   // Find the normalized direction vector based on the
   // previously calculated points.
@@ -880,7 +912,12 @@ export const getArrowheadPoints = (
     let ox;
     let oy;
 
-    if (position === "start") {
+    if (automaticCurveGeometry) {
+      // zsviczian -- `nx,ny` always points outwards from the curve endpoint,
+      // so the opposite diamond point lies two marker lengths bodywards.
+      ox = tx - nx * minSize * 2;
+      oy = ty - ny * minSize * 2;
+    } else if (position === "start") {
       const [px, py] = element.points.length > 1 ? element.points[1] : [0, 0];
 
       [ox, oy] = pointRotateRads(
@@ -913,6 +950,14 @@ const generateLinearElementShape = (
 ): Drawable => {
   const generator = rough.generator();
   const options = generateRoughOptions(element);
+  const svgPathShape = element.customData?.svgPathShape;
+
+  // zsviczian -- legacy brace/path scripts store the canonical cubic here.
+  // Bounds must not fall back to the visibly different control-point polyline
+  // before ShapeCache happens to be populated.
+  if (typeof svgPathShape === "string" && svgPathShape.trim()) {
+    return generator.path(svgPathShape, options);
+  }
 
   const method = (() => {
     if (element.roundness) {
@@ -963,6 +1008,41 @@ const getLinearElementRotatedBounds = (
     }
     return coords;
   }
+
+  // zsviczian START -- YMJR block arrows paint a full silhouette outside an
+  // element whose serialized height can be zero. Account for that silhouette
+  // even before ShapeCache has been populated, otherwise culling/selection can
+  // treat it as a one-dimensional line.
+  if (isArrowElement(element)) {
+    const polygon = getBlockArrowPolygon(element);
+    if (polygon) {
+      const points = polygon.map(([x, y]) =>
+        pointRotateRads(
+          pointFrom<GlobalPoint>(element.x + x, element.y + y),
+          pointFrom<GlobalPoint>(cx, cy),
+          element.angle,
+        ),
+      );
+      let coords = getBoundsFromPoints(points);
+      if (boundTextElement) {
+        const coordsWithBoundText =
+          LinearElementEditor.getMinMaxXYWithBoundText(
+            element,
+            elementsMap,
+            coords,
+            boundTextElement,
+          );
+        coords = [
+          coordsWithBoundText[0],
+          coordsWithBoundText[1],
+          coordsWithBoundText[2],
+          coordsWithBoundText[3],
+        ];
+      }
+      return coords;
+    }
+  }
+  // zsviczian END
 
   // first element is always the curve
   const cachedShape = ShapeCache.get(element, null)?.[0];

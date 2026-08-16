@@ -345,6 +345,10 @@ export type ArrowheadLegacy =
 
 export type Arrowhead =
   | "arrow"
+  | "chevron"
+  | "chevron_outline"
+  | "block_arrow"
+  | "block_arrow_outline"
   | "bar"
   | "circle"
   | "circle_outline"

@@ -37,6 +37,7 @@ import {
   sharpArrowIcon,
   roundArrowIcon,
   elbowArrowIcon,
+  curveArrowIcon,
   TextSizeIcon,
   adjustmentsIcon,
   DotsHorizontalIcon,
@@ -194,6 +195,7 @@ export const SelectedShapeActions = ({
       {predicates.roundness && <>{renderAction("changeRoundness")}</>}
 
       {predicates.arrowType && <>{renderAction("changeArrowType")}</>}
+      {predicates.arrowType && <>{renderAction("changeSnapProp")}</>}
 
       {predicates.text && (
         <>
@@ -398,6 +400,8 @@ const CombinedArrowProperties = ({
                   if (isArrowElement(element)) {
                     return element.elbowed
                       ? "elbow"
+                      : element.customData?.curveArrow // zsviczian -- reflect the YMJR-parity curve type in compact mode.
+                      ? "curve"
                       : element.roundness
                       ? "round"
                       : "sharp";
@@ -414,6 +418,9 @@ const CombinedArrowProperties = ({
               }
               if (arrowType === "round") {
                 return roundArrowIcon;
+              }
+              if (arrowType === "curve") {
+                return curveArrowIcon;
               }
               return sharpArrowIcon;
             })()}

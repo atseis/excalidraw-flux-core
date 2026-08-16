@@ -15,7 +15,23 @@ import { API } from "./helpers/api";
 import { Pointer } from "./helpers/ui";
 import { act, fireEvent, GlobalTestState, render } from "./test-utils";
 
-import type { AppClassProperties, ExcalidrawImperativeAPI } from "../types";
+import type {
+  AppClassProperties,
+  ExcalidrawImperativeAPI,
+  ToolShortcutPreferences,
+} from "../types";
+
+const HOST_TOOL_SHORTCUT_PREFERENCES: ToolShortcutPreferences = {
+  eraser: { numeric: true, letter: false },
+  selection: { numeric: true, letter: false },
+  rectangle: { numeric: true, letter: false },
+  diamond: { numeric: true, letter: false },
+  ellipse: { numeric: true, letter: false },
+  arrow: { numeric: true, letter: false },
+  line: { numeric: true, letter: false },
+  freedraw: { numeric: true, letter: false },
+  text: { numeric: false, letter: true },
+};
 
 describe("setActiveTool()", () => {
   const h = window.h;
@@ -84,6 +100,7 @@ describe("findShapeByKey()", () => {
           type: preferredSelectionTool,
         },
       },
+      props: {},
     } as AppClassProperties);
 
   it("selection shortcuts activate selection when it's preferred", () => {
@@ -122,6 +139,45 @@ describe("findShapeByKey()", () => {
 
     expect(findShapeByKey("R", app, true)).toBeNull();
     expect(findShapeByKey("V", app, true)).toBeNull();
+  });
+
+  it("respects host digit and letter preferences for every 0–8 tool", () => {
+    const app = appWithPreferredTool("selection");
+    app.props.toolShortcutPreferences = HOST_TOOL_SHORTCUT_PREFERENCES;
+
+    const digitTools = [
+      ["0", "eraser"],
+      ["1", "selection"],
+      ["2", "rectangle"],
+      ["3", "diamond"],
+      ["4", "ellipse"],
+      ["5", "arrow"],
+      ["6", "line"],
+      ["7", "freedraw"],
+    ] as const;
+    digitTools.forEach(([key, tool]) => {
+      expect(findShapeByKey(key, app)).toBe(tool);
+    });
+    expect(findShapeByKey("8", app)).toBeNull();
+
+    ["e", "v", "r", "d", "o", "a", "l", "p", "x"].forEach(
+      (key) => expect(findShapeByKey(key, app)).toBeNull(),
+    );
+    expect(findShapeByKey("t", app)).toBe("text");
+    expect(findShapeByKey("x", app, true)).toBe("autoshape");
+  });
+
+  it("can independently disable both aliases or enable only the letter", () => {
+    const app = appWithPreferredTool("selection");
+    app.props.toolShortcutPreferences = {
+      rectangle: { numeric: false, letter: false },
+      arrow: { numeric: false, letter: true },
+    };
+
+    expect(findShapeByKey("2", app)).toBeNull();
+    expect(findShapeByKey("r", app)).toBeNull();
+    expect(findShapeByKey("5", app)).toBeNull();
+    expect(findShapeByKey("a", app)).toBe("arrow");
   });
 });
 

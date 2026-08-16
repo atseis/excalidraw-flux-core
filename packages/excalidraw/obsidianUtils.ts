@@ -160,6 +160,54 @@ export function registerLocalFont(
   Fonts.register("Local Font", fontMetrics, { uri });
 }
 
+/**
+ * Registers a vault-backed font under a stable numeric scene id.
+ *
+ * Obsidian integrations can call this once per packaged Excalidraw runtime.
+ * The caller owns stable id generation so drawings remain portable between
+ * vaults that contain the same font configuration.
+ */
+export function registerCustomFont(
+  family: string,
+  familyId: number,
+  fontMetrics: FontMetadata,
+  uri: string,
+): number {
+  // zsviczian: expose a maintainable multi-font bridge for Obsidian forks
+  // while keeping upstream's numeric font-family serialization model.
+  const normalizedFamily = family.trim();
+  if (!normalizedFamily) {
+    throw new Error("Custom font family must not be empty");
+  }
+  if (!Number.isSafeInteger(familyId) || familyId <= 10) {
+    throw new Error(`Invalid custom font family id: ${familyId}`);
+  }
+
+  const mutableFontFamilies = FONT_FAMILY as Record<string, number>;
+  const existingId = mutableFontFamilies[normalizedFamily];
+  if (typeof existingId === "number" && existingId !== familyId) {
+    throw new Error(
+      `Custom font family "${normalizedFamily}" is already registered as ${existingId}`,
+    );
+  }
+  const existingFamily = Object.entries(mutableFontFamilies).find(
+    ([name, id]) => name !== normalizedFamily && id === familyId,
+  )?.[0];
+  if (existingFamily) {
+    throw new Error(
+      `Custom font family id ${familyId} is already used by "${existingFamily}"`,
+    );
+  }
+
+  mutableFontFamilies[normalizedFamily] = familyId;
+  FONT_METADATA[familyId] = fontMetrics;
+  // zsviczian: vault font files may be replaced without changing their
+  // portable family id, so refresh the registered face on reinitialization.
+  Fonts.registered.delete(familyId);
+  Fonts.register(normalizedFamily, fontMetrics, { uri });
+  return familyId;
+}
+
 export function getFontFamilies(): string[] {
   const fontFamilies: Set<string> = new Set();
   for (const fontFaces of Fonts.registered.values()) {

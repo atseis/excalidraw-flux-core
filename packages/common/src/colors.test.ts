@@ -196,6 +196,11 @@ describe("applyDarkModeFilter", () => {
         "yellow",
         "orange",
         "bronze",
+        "navy",
+        "lime",
+        "mint",
+        "olive",
+        "plum",
       ] as const) {
         const shades = COLOR_PALETTE[colorName];
         transformedPalette[colorName] = shades.map((shade) =>

@@ -1,3 +1,13 @@
+# Excalidraw Flux Core
+
+This repository is the open-source canvas engine used by [Excalidraw Flux for Obsidian](https://github.com/atseis/obsidian-excalidraw-flux). It is based on [zsviczian/excalidraw](https://github.com/zsviczian/excalidraw), which in turn tracks the upstream [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) project.
+
+Flux-specific code adds enhanced Arrowheads and Block arrow geometry, Sharp/Round/Elbow/Automatic Curve paths, connection modes and endpoint snapping, configurable tool aliases, two-stroke property shortcuts, legacy animation/brace rendering, and compatibility with existing HyperFlux drawings. The Obsidian consumer artifact is built with `yarn build:obsidian`; end users install only the plugin repository through BRAT and do not install this Core separately.
+
+The upstream README is retained below for project documentation and attribution.
+
+## Upstream Excalidraw documentation
+
 <a href="https://excalidraw.com/" target="_blank" rel="noopener">
   <picture>
     <source media="(prefers-color-scheme: dark)" alt="Excalidraw" srcset="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2_dark.png" />

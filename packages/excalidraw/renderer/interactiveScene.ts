@@ -44,6 +44,9 @@ import {
   isTextElement,
   LinearElementEditor,
   getActiveTextElement,
+  fixedPointToGlobal,
+  getArrowSnapPointRatios,
+  getArrowSnapMode,
   getElementsInGroup,
   getSelectedGroupIds,
   isSelectedViaGroup,
@@ -250,6 +253,21 @@ const renderBindingHighlightForBindableElement_simple = (
   pointerCoords: GlobalPoint | null,
   angleLocked = false,
 ) => {
+  const linearElement = appState.selectedLinearElement;
+  const selectedArrow =
+    linearElement?.elementId &&
+    LinearElementEditor.getElement(linearElement.elementId, elementsMap);
+  const newArrow = isArrowElement(appState.newElement)
+    ? appState.newElement
+    : null;
+  const snapArrow = isArrowElement(selectedArrow) ? selectedArrow : newArrow;
+  const shouldRenderConnectionPoints =
+    (!!snapArrow && getArrowSnapMode(snapArrow) === "points") ||
+    // zsviczian -- show YMJR Points candidates before pointer-down, while the
+    // user is choosing the start endpoint and no arrow element exists yet.
+    (appState.activeTool.type === "arrow" &&
+      appState.currentItemSnap === "points");
+
   const enclosingFrame =
     suggestedBinding.element.frameId &&
     elementsMap.get(suggestedBinding.element.frameId);
@@ -436,6 +454,29 @@ const renderBindingHighlightForBindableElement_simple = (
       context.restore();
 
       break;
+  }
+
+  if (shouldRenderConnectionPoints) {
+    context.save();
+    context.strokeStyle = "#ff00ff";
+    context.lineWidth = 2 / appState.zoom.value;
+    const radius = 5 / appState.zoom.value;
+    for (const fixedPoint of getArrowSnapPointRatios(
+      suggestedBinding.element,
+    )) {
+      const point = fixedPointToGlobal(
+        fixedPoint,
+        suggestedBinding.element,
+        elementsMap,
+      );
+      context.beginPath();
+      context.moveTo(point[0] - radius, point[1] - radius);
+      context.lineTo(point[0] + radius, point[1] + radius);
+      context.moveTo(point[0] + radius, point[1] - radius);
+      context.lineTo(point[0] - radius, point[1] + radius);
+      context.stroke();
+    }
+    context.restore();
   }
 
   if (
@@ -1222,7 +1263,7 @@ const renderLinearPointHandles = (
         );
       }
     });
-  } else {
+  } else if (!element.customData?.curveArrow) {
     const midPoints = LinearElementEditor.getEditorMidPoints(
       element,
       elementsMap,

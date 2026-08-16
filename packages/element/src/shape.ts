@@ -48,6 +48,7 @@ import { elementWithCanvasCache } from "./renderElement";
 
 import {
   canBecomePolygon,
+  isArrowElement,
   isElbowArrow,
   isEmbeddableElement,
   isIframeElement,
@@ -65,10 +66,15 @@ import {
   getElementAbsoluteCoords,
 } from "./bounds";
 import { shouldTestInside } from "./collision";
+import {
+  getBlockArrowPolygon,
+  getCurveArrowGeometry,
+} from "./ymjrArrowFeatures";
 
 import type {
   ExcalidrawElement,
   ExcalidrawSelectionElement,
+  ExcalidrawArrowElement,
   ExcalidrawLinearElement,
   ExcalidrawFreeDrawElement,
   ElementsMap,
@@ -174,6 +180,27 @@ const getDashArrayDashed = (strokeWidth: number) => [8, 8 + strokeWidth];
 
 const getDashArrayDotted = (strokeWidth: number) => [1.5, 6 + strokeWidth];
 
+const getLegacyAnimationDash = (
+  element: ExcalidrawElement,
+): number[] | undefined => {
+  const animation = element.customData?.animation;
+  if (animation?.type !== "arrow" || animation.style !== "dash") {
+    return undefined;
+  }
+  const dash = animation.strokeLineDash;
+  if (
+    Array.isArray(dash) &&
+    dash.length >= 2 &&
+    dash.every(
+      (value) =>
+        typeof value === "number" && Number.isFinite(value) && value > 0,
+    )
+  ) {
+    return dash;
+  }
+  return [8, 8];
+};
+
 function adjustRoughness(element: ExcalidrawElement): number {
   const roughness = element.roughness;
 
@@ -202,17 +229,22 @@ export const generateRoughOptions = (
   continuousPath = false,
   isDarkMode: boolean = false,
 ): Options => {
+  // zsviczian -- `add animation for line` stores its dash definition in
+  // customData rather than changing Excalidraw's ordinary strokeStyle.
+  const legacyAnimationDash = getLegacyAnimationDash(element);
   const options: Options = {
     seed: element.seed,
     strokeLineDash:
-      element.strokeStyle === "dashed"
+      legacyAnimationDash ??
+      (element.strokeStyle === "dashed"
         ? getDashArrayDashed(element.strokeWidth)
         : element.strokeStyle === "dotted"
         ? getDashArrayDotted(element.strokeWidth)
-        : undefined,
+        : undefined),
     // for non-solid strokes, disable multiStroke because it tends to make
     // dashes/dots overlay each other
-    disableMultiStroke: element.strokeStyle !== "solid",
+    disableMultiStroke:
+      element.strokeStyle !== "solid" || Boolean(legacyAnimationDash),
     // for non-solid strokes, increase the width a bit to make it visually
     // similar to solid strokes, because we're also disabling multiStroke
     strokeWidth:
@@ -443,6 +475,77 @@ const getArrowheadShapes = (
         ),
       ];
     }
+    case "chevron":
+    case "chevron_outline": {
+      const arrowheadPoints = getArrowheadPoints(
+        element,
+        shape,
+        position,
+        arrowhead,
+      );
+      if (arrowheadPoints === null) {
+        return [];
+      }
+      const [tipX, tipY, wing1X, wing1Y, wing2X, wing2Y] = arrowheadPoints;
+      const wingMidX = (wing1X + wing2X) / 2;
+      const wingMidY = (wing1Y + wing2Y) / 2;
+      const notchX = wingMidX + (tipX - wingMidX) * 0.4;
+      const notchY = wingMidY + (tipY - wingMidY) * 0.4;
+      const chevronOptions = {
+        ...options,
+        fill:
+          arrowhead === "chevron_outline" ? backgroundFillColor : strokeColor,
+        fillStyle: "solid" as const,
+        roughness: Math.min(1, options.roughness || 0),
+      };
+      delete chevronOptions.strokeLineDash;
+      return [
+        generator.polygon(
+          [
+            [wing1X, wing1Y],
+            [tipX, tipY],
+            [wing2X, wing2Y],
+            [notchX, notchY],
+            [wing1X, wing1Y],
+          ],
+          chevronOptions,
+        ),
+      ];
+    }
+    case "block_arrow":
+    case "block_arrow_outline": {
+      const arrowheadPoints = getArrowheadPoints(
+        element,
+        shape,
+        position,
+        arrowhead,
+      );
+      if (arrowheadPoints === null) {
+        return [];
+      }
+      const [tipX, tipY, wing1X, wing1Y, wing2X, wing2Y] = arrowheadPoints;
+      const blockOptions = {
+        ...options,
+        fill:
+          arrowhead === "block_arrow_outline"
+            ? backgroundFillColor
+            : strokeColor,
+        fillStyle: "solid" as const,
+        roughness: Math.min(0.5, options.roughness || 0),
+      };
+      delete blockOptions.strokeLineDash;
+      return [
+        generator.polygon(
+          [
+            [tipX, tipY],
+            [wing1X, wing1Y],
+            [wing2X, wing2Y],
+            [tipX, tipY],
+          ],
+          blockOptions,
+        ),
+      ];
+    }
     case "diamond":
     case "diamond_outline": {
       const arrowheadPoints = getArrowheadPoints(
@@ -581,6 +684,101 @@ const getArrowheadShapes = (
   }
 };
 
+const generateBlockArrowShape = (
+  element: ExcalidrawArrowElement,
+  generator: RoughGenerator,
+  options: Options,
+  canvasBackgroundColor: string,
+  isDarkMode: boolean,
+): Drawable[] | null => {
+  const polygon = getBlockArrowPolygon(element);
+  if (!polygon) {
+    return null;
+  }
+
+  const isOutline =
+    element.startArrowhead === "block_arrow_outline" ||
+    element.endArrowhead === "block_arrow_outline";
+  const strokeColor = applyDarkModeFilter(element.strokeColor, isDarkMode);
+  const backgroundFillColor = applyDarkModeFilter(
+    canvasBackgroundColor,
+    isDarkMode,
+  );
+  const blockOptions = {
+    ...options,
+    fill: isOutline ? backgroundFillColor : strokeColor,
+    fillStyle: "solid" as const,
+    stroke: strokeColor,
+    roughness: Math.min(0.5, options.roughness || 0),
+  };
+  delete blockOptions.strokeLineDash;
+
+  // zsviczian -- RoughJS declares a mutable Point[], while the compatibility
+  // helper deliberately exposes immutable geometry. Copy at the boundary.
+  const roughPolygon: RoughPoint[] = polygon.map(([x, y]) => [x, y]);
+  return [generator.polygon(roughPolygon, blockOptions)];
+};
+
+const generateCurveArrowShapes = (
+  element: ExcalidrawLinearElement,
+  generator: RoughGenerator,
+  options: Options,
+  canvasBackgroundColor: string,
+  isDarkMode: boolean,
+): Drawable[] => {
+  const geometry = getCurveArrowGeometry(element);
+  if (!geometry) {
+    return [];
+  }
+
+  // zsviczian -- keep the automatic cubic as the first drawable so the
+  // official arrowhead geometry can derive both endpoint tangents from it.
+  const shapes: Drawable[] = [generator.path(geometry.path, options)];
+  const { startArrowhead = null, endArrowhead = "arrow" } = element;
+
+  // Block arrows own the complete closed silhouette and are generated by
+  // generateBlockArrowShape() before this branch. Never degrade one into a
+  // detached triangular marker if malformed legacy data reaches this helper.
+  if (startArrowhead && !startArrowhead.startsWith("block_arrow")) {
+    shapes.push(
+      ...getArrowheadShapes(
+        element,
+        shapes,
+        "start",
+        startArrowhead,
+        generator,
+        options,
+        canvasBackgroundColor,
+        isDarkMode,
+      ),
+    );
+  }
+
+  if (endArrowhead && !endArrowhead.startsWith("block_arrow")) {
+    shapes.push(
+      ...getArrowheadShapes(
+        element,
+        shapes,
+        "end",
+        endArrowhead,
+        generator,
+        options,
+        canvasBackgroundColor,
+        isDarkMode,
+      ),
+    );
+  }
+
+  return shapes;
+};
+
+const getLegacySvgPathShape = (
+  element: ExcalidrawLinearElement,
+): string | null => {
+  const path = element.customData?.svgPathShape;
+  return typeof path === "string" && path.trim() ? path : null;
+};
+
 export const generateLinearCollisionShape = (
   element: ExcalidrawLinearElement | ExcalidrawFreeDrawElement,
   elementsMap: ElementsMap,
@@ -606,6 +804,84 @@ export const generateLinearCollisionShape = (
       const points = element.points.length
         ? element.points
         : [pointFrom<LocalPoint>(0, 0)];
+
+      // zsviczian -- use the same full YMJR silhouette for collision geometry
+      // as for paint and bounds. The closing point makes the final edge back
+      // to the arrow body explicit for hit testing.
+      const blockArrowPolygon = isArrowElement(element)
+        ? getBlockArrowPolygon(element)
+        : null;
+      const svgPathShape = getLegacySvgPathShape(element);
+      if (svgPathShape) {
+        // zsviczian -- YMJR brace/path scripts persist their exact smooth
+        // geometry here while keeping the original linear points for editing,
+        // sizing and placement. Use the same path for hit testing as paint.
+        return generator.path(svgPathShape, options).sets[0].ops.map((op) =>
+          op.data.length < 2
+            ? op
+            : {
+                ...op,
+                data: Array.from({ length: op.data.length / 2 }).flatMap(
+                  (_, index) => {
+                    const point = pointRotateRads(
+                      pointFrom<GlobalPoint>(
+                        element.x + op.data[index * 2],
+                        element.y + op.data[index * 2 + 1],
+                      ),
+                      center,
+                      element.angle,
+                    );
+                    return [point[0] - element.x, point[1] - element.y];
+                  },
+                ),
+              },
+        );
+      } else if (blockArrowPolygon) {
+        return [...blockArrowPolygon, blockArrowPolygon[0]].map(
+          (localPoint, index) => {
+            const point = pointRotateRads(
+              pointFrom<GlobalPoint>(
+                element.x + localPoint[0],
+                element.y + localPoint[1],
+              ),
+              center,
+              element.angle,
+            );
+            return {
+              op: index === 0 ? "move" : "lineTo",
+              data: pointFrom<LocalPoint>(
+                point[0] - element.x,
+                point[1] - element.y,
+              ),
+            };
+          },
+        );
+      } else if (element.type === "arrow" && element.customData?.curveArrow) {
+        const geometry = getCurveArrowGeometry(element);
+        if (geometry) {
+          return generator.path(geometry.path, options).sets[0].ops.map((op) =>
+            op.data.length < 2
+              ? op
+              : {
+                  ...op,
+                  data: Array.from({ length: op.data.length / 2 }).flatMap(
+                    (_, index) => {
+                      const point = pointRotateRads(
+                        pointFrom<GlobalPoint>(
+                          element.x + op.data[index * 2],
+                          element.y + op.data[index * 2 + 1],
+                        ),
+                        center,
+                        element.angle,
+                      );
+                      return [point[0] - element.x, point[1] - element.y];
+                    },
+                  ),
+                },
+          );
+        }
+        return [];
+      }
 
       if (isElbowArrow(element)) {
         return generator.path(generateElbowArrowShape(points, 16), options)
@@ -885,8 +1161,49 @@ const _generateElementShape = (
       const points = element.points.length
         ? element.points
         : [pointFrom<LocalPoint>(0, 0)];
+      const svgPathShape = getLegacySvgPathShape(element);
+      const blockArrowShape = isArrowElement(element)
+        ? generateBlockArrowShape(
+            element,
+            generator,
+            options,
+            canvasBackgroundColor,
+            isDarkMode,
+          )
+        : null;
 
-      if (isElbowArrow(element)) {
+      // zsviczian -- a YMJR block arrow owns the complete closed silhouette;
+      // the helper still follows its sharp, round, elbow, or automatic route.
+      if (svgPathShape) {
+        // zsviczian -- preserve the exact cubic path emitted by legacy YMJR
+        // path scripts (notably the four brace Actions). Official Excalidraw
+        // safely retains unknown customData; this fork additionally renders it.
+        shape = [generator.path(svgPathShape, options)];
+      } else if (blockArrowShape) {
+        shape = blockArrowShape;
+        if (element.customData?.curveArrow) {
+          // zsviczian -- the Block polygon replaces only the automatic
+          // centerline and Block endpoint. Preserve an independently selected
+          // ordinary marker on the opposite endpoint.
+          shape.push(
+            ...generateCurveArrowShapes(
+              element,
+              generator,
+              generateRoughOptions(element, true, isDarkMode),
+              canvasBackgroundColor,
+              isDarkMode,
+            ).slice(1),
+          );
+        }
+      } else if (element.type === "arrow" && element.customData?.curveArrow) {
+        shape = generateCurveArrowShapes(
+          element,
+          generator,
+          generateRoughOptions(element, true, isDarkMode),
+          canvasBackgroundColor,
+          isDarkMode,
+        );
+      } else if (isElbowArrow(element)) {
         // NOTE (mtolmacs): Temporary fix for extremely big arrow shapes
         if (
           !points.every(
@@ -924,10 +1241,13 @@ const _generateElementShape = (
       }
 
       // add lines only in arrow
-      if (element.type === "arrow") {
+      if (element.type === "arrow" && !element.customData?.curveArrow) {
         const { startArrowhead = null, endArrowhead = "arrow" } = element;
 
-        if (startArrowhead !== null) {
+        if (
+          startArrowhead !== null &&
+          !startArrowhead.startsWith("block_arrow")
+        ) {
           const shapes = getArrowheadShapes(
             element,
             shape,
@@ -941,7 +1261,7 @@ const _generateElementShape = (
           shape.push(...shapes);
         }
 
-        if (endArrowhead !== null) {
+        if (endArrowhead !== null && !endArrowhead.startsWith("block_arrow")) {
           if (endArrowhead === undefined) {
             // Hey, we have an old arrow here!
           }

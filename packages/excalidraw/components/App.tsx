@@ -261,6 +261,7 @@ import {
   getActiveTextElement,
   isEligibleFrameChildType,
   getBindingStrategyForDraggingBindingElementEndpoints,
+  getArrowSnapMode,
   isNonDeletedElement,
 } from "@excalidraw/element";
 
@@ -291,6 +292,7 @@ import type {
   SceneElementsMap,
   NonDeletedSceneElementsMap,
   ExcalidrawBindableElement,
+  Arrowhead,
 } from "@excalidraw/element/types";
 
 import type { ArrowEndpoint } from "@excalidraw/element";
@@ -330,6 +332,8 @@ import {
   actionToggleArrowBinding,
   actionToggleMidpointSnapping,
   actionToggleCropEditor,
+  actionChangeQuickLineStyle,
+  actionApplyLineAnimation,
 } from "../actions";
 import { actionWrapTextInContainer } from "../actions/actionBoundText";
 import { zoomToFitElements } from "../actions/actionCanvas";
@@ -459,7 +463,11 @@ import { CursorHint, CursorHints } from "./CursorHint";
 import { MagicIcon, copyIcon, fullscreenIcon } from "./icons";
 import { AppStateObserver, type OnStateChange } from "./AppStateObserver";
 
-import { findShapeByKey, TOGGLE_TOOLS } from "./Tools";
+import {
+  findShapeByKey,
+  isToolShortcutEnabled,
+  TOGGLE_TOOLS,
+} from "./Tools";
 
 import UnlockPopup from "./UnlockPopup";
 
@@ -503,10 +511,27 @@ import type {
 } from "../types";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { Action, ActionName, ActionResult } from "../actions/types";
-import { allowDoubleTapEraser, disableDoubleClickTextEditing, getExcalidrawContentEl, getMaxZoom, getZoomStep, hideFreedrawPenmodeCursor, isTouchInPenMode, isPanWithRightMouseEnabled, shouldDisableZoom, isContextMenuDisabled, refreshAllArrows, syncElementLinkWithText, getSharedMermaidInstance } from "../obsidianUtils";
+import {
+  allowDoubleTapEraser,
+  disableDoubleClickTextEditing,
+  getExcalidrawContentEl,
+  getMaxZoom,
+  getZoomStep,
+  hideFreedrawPenmodeCursor,
+  isTouchInPenMode,
+  isPanWithRightMouseEnabled,
+  shouldDisableZoom,
+  isContextMenuDisabled,
+  refreshAllArrows,
+  syncElementLinkWithText,
+  getSharedMermaidInstance,
+} from "../obsidianUtils";
 import { initializeObsidianUtils } from "@excalidraw/common";
 import { getTooltipDiv } from "./Tooltip";
-import { getFontSize } from "../actions/actionProperties";
+import {
+  actionChangeArrowhead,
+  getFontSize,
+} from "../actions/actionProperties";
 
 const AppContext = React.createContext<AppClassProperties>(null!);
 const AppPropsContext = React.createContext<AppProps>(null!);
@@ -626,6 +651,28 @@ const gesture: Gesture = {
   initialScale: null,
 };
 
+// zsviczian START -- keep the host Arrowhead selector aligned with the
+// mnemonic letters displayed by the native Arrowhead picker.
+const HOST_ARROWHEAD_SHORTCUTS: Partial<Record<string, Arrowhead | null>> = {
+  q: null,
+  w: "arrow",
+  e: "triangle",
+  r: "triangle_outline",
+  t: "chevron",
+  y: "chevron_outline",
+  b: "block_arrow",
+  n: "block_arrow_outline",
+  a: "circle",
+  s: "circle_outline",
+  d: "diamond",
+  f: "diamond_outline",
+  z: "bar",
+  x: "cardinality_one",
+  c: "cardinality_many",
+  v: "cardinality_one_or_many",
+};
+// zsviczian END
+
 class App extends React.Component<AppProps, AppState> {
   canvas: AppClassProperties["canvas"];
   interactiveCanvas: AppClassProperties["interactiveCanvas"] = null;
@@ -677,6 +724,90 @@ class App extends React.Component<AppProps, AppState> {
 
   private _initialized = false;
 
+  /**
+   * zsviczian -- YMJR-compatible two-stroke line-style selector. It is
+   * enabled only when a host supplies tool shortcut preferences, so
+   * standalone Excalidraw keeps its upstream single-key L = Line behavior.
+   */
+  private pendingLineStyleShortcut = false;
+  private pendingLineStyleShortcutTimer: number | null = null;
+
+  private clearPendingLineStyleShortcut = () => {
+    this.pendingLineStyleShortcut = false;
+    if (this.pendingLineStyleShortcutTimer !== null) {
+      window.clearTimeout(this.pendingLineStyleShortcutTimer);
+      this.pendingLineStyleShortcutTimer = null;
+    }
+  };
+
+  private startPendingLineStyleShortcut = () => {
+    this.clearPendingLineStyleShortcut();
+    this.pendingLineStyleShortcut = true;
+    this.setState({ openMenu: "shape" });
+    this.pendingLineStyleShortcutTimer = window.setTimeout(() => {
+      this.pendingLineStyleShortcut = false;
+      this.pendingLineStyleShortcutTimer = null;
+
+      // If a host re-enables the Line letter alias, a lone L still activates
+      // Line after the two-stroke selector timeout.
+      if (
+        isToolShortcutEnabled(
+          "line",
+          "letter",
+          this.props.toolShortcutPreferences,
+        ) &&
+        !this.state.viewModeEnabled &&
+        !this.state.editingTextElement &&
+        !this.state.newElement &&
+        !this.state.selectionElement &&
+        !this.state.selectedElementsAreBeingDragged
+      ) {
+        this.setActiveTool({ type: "line" }, { toggle: true });
+      }
+    }, 1200);
+  };
+
+  /**
+   * zsviczian -- host-only two-stroke Arrowhead selector. The second key uses
+   * the native picker's mnemonic; Shift targets the start, otherwise the end.
+   * A lone A retains its Arrow-tool meaning after the timeout when enabled.
+   */
+  private pendingArrowheadShortcut = false;
+  private pendingArrowheadShortcutTimer: number | null = null;
+
+  private clearPendingArrowheadShortcut = () => {
+    this.pendingArrowheadShortcut = false;
+    if (this.pendingArrowheadShortcutTimer !== null) {
+      window.clearTimeout(this.pendingArrowheadShortcutTimer);
+      this.pendingArrowheadShortcutTimer = null;
+    }
+  };
+
+  private startPendingArrowheadShortcut = () => {
+    this.clearPendingArrowheadShortcut();
+    this.pendingArrowheadShortcut = true;
+    this.setState({ openMenu: "shape" });
+    this.pendingArrowheadShortcutTimer = window.setTimeout(() => {
+      this.pendingArrowheadShortcut = false;
+      this.pendingArrowheadShortcutTimer = null;
+
+      if (
+        isToolShortcutEnabled(
+          "arrow",
+          "letter",
+          this.props.toolShortcutPreferences,
+        ) &&
+        !this.state.viewModeEnabled &&
+        !this.state.editingTextElement &&
+        !this.state.newElement &&
+        !this.state.selectionElement &&
+        !this.state.selectedElementsAreBeingDragged
+      ) {
+        this.setActiveTool({ type: "arrow" }, { toggle: true });
+      }
+    }, 1200);
+  };
+
   private readonly editorLifecycleEvents = new AppEventBus<
     ExcalidrawImperativeAPIEventMap,
     typeof editorLifecycleEventBehavior
@@ -723,7 +854,6 @@ class App extends React.Component<AppProps, AppState> {
   /** previous frame pointer coords */
   previousPointerMoveCoords: { x: number; y: number } | null = null;
   allowMobileMode: boolean = true; //zsviczian
-
 
   drawShape = new AppDrawShape(this);
   laserTrails = new LaserTrails(this);
@@ -961,7 +1091,8 @@ class App extends React.Component<AppProps, AppState> {
   public isNavigationEnabled(
     props: Pick<AppProps, "interaction"> = this.props,
   ): boolean {
-    if (isPanWithRightMouseEnabled()) { //zsviczian #329 Miro-style right-button panning is canvas navigation
+    if (isPanWithRightMouseEnabled()) {
+      //zsviczian #329 Miro-style right-button panning is canvas navigation
       return true;
     }
     if (typeof props.interaction === "object" && props.interaction !== null) {
@@ -1811,13 +1942,15 @@ class App extends React.Component<AppProps, AppState> {
           );
 
           //zsviczian - shouldRenderAllEmbeddables
-          const isVisible = this.shouldRenderAllEmbeddables || isElementInViewport(
-            el,
-            normalizedWidth,
-            normalizedHeight,
-            this.state,
-            this.scene.getNonDeletedElementsMap(),
-          );
+          const isVisible =
+            this.shouldRenderAllEmbeddables ||
+            isElementInViewport(
+              el,
+              normalizedWidth,
+              normalizedHeight,
+              this.state,
+              this.scene.getNonDeletedElementsMap(),
+            );
           const hasBeenInitialized = this.initializedEmbeds.has(el.id);
 
           if (isVisible && !hasBeenInitialized) {
@@ -2078,7 +2211,10 @@ class App extends React.Component<AppProps, AppState> {
                       (isWebview ? ( //zsviczian
                         <webview
                           ref={(ref) =>
-                            this.cacheEmbeddableRef(el, ref as HTMLIFrameElement)
+                            this.cacheEmbeddableRef(
+                              el,
+                              ref as HTMLIFrameElement,
+                            )
                           }
                           className="excalidraw__embeddable"
                           src={
@@ -2100,7 +2236,9 @@ class App extends React.Component<AppProps, AppState> {
                               : undefined
                           }
                           src={
-                            src?.type !== "document" ? src?.link ?? "" : undefined
+                            src?.type !== "document"
+                              ? src?.link ?? ""
+                              : undefined
                           }
                           // https://stackoverflow.com/q/18470015
                           // scrolling="no" //zsviczian
@@ -2114,8 +2252,7 @@ class App extends React.Component<AppProps, AppState> {
                               : ""
                           } allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads`}
                         />
-                      )
-                    )}
+                      ))}
                   </div>
                 </div>
               </div>
@@ -2194,9 +2331,13 @@ class App extends React.Component<AppProps, AppState> {
 
     const isDarkTheme = this.state.theme === THEME.DARK;
     //zsviczian
-    const nonDeletedFramesLikes = this.state.frameRendering.markerName && this.state.frameRendering.markerEnabled
-      ? this.scene.getNonDeletedFramesLikes()
-      : this.scene.getNonDeletedFramesLikes().filter(f => f.frameRole !== "marker");
+    const nonDeletedFramesLikes =
+      this.state.frameRendering.markerName &&
+      this.state.frameRendering.markerEnabled
+        ? this.scene.getNonDeletedFramesLikes()
+        : this.scene
+            .getNonDeletedFramesLikes()
+            .filter((f) => f.frameRole !== "marker");
 
     const focusedSearchMatch =
       nonDeletedFramesLikes.length > 0
@@ -2641,45 +2782,47 @@ class App extends React.Component<AppProps, AppState> {
                               </ElementCanvasButtons>
                             )}
 
-                          {(this.isDefaultUIEnabled() || isPanWithRightMouseEnabled()) && this.state.contextMenu && ( //zsviczian #329 render the Miro-style keyboard context menu
-                            <ContextMenu
-                              items={this.state.contextMenu.items}
-                              top={this.state.contextMenu.top}
-                              left={this.state.contextMenu.left}
-                              actionManager={this.actionManager}
-                              onClose={(callback) => {
-                                this.setState({ contextMenu: null }, () => {
-                                  this.focusContainer();
-                                  callback?.();
-                                });
-                              }}
-                            />
-                          )}
+                          {(this.isDefaultUIEnabled() ||
+                            isPanWithRightMouseEnabled()) &&
+                            this.state.contextMenu && ( //zsviczian #329 render the Miro-style keyboard context menu
+                              <ContextMenu
+                                items={this.state.contextMenu.items}
+                                top={this.state.contextMenu.top}
+                                left={this.state.contextMenu.left}
+                                actionManager={this.actionManager}
+                                onClose={(callback) => {
+                                  this.setState({ contextMenu: null }, () => {
+                                    this.focusContainer();
+                                    callback?.();
+                                  });
+                                }}
+                              />
+                            )}
                           {newElementCanvasElement &&
-                          isHighlighter && ( //zsviczian
-                            <NewElementCanvas
-                              appState={this.state}
-                              newElement={newElementCanvasElement}
-                              scale={window.devicePixelRatio}
-                              rc={this.rc}
-                              elementsMap={renderableElementsMap}
-                              allElementsMap={allElementsMap}
-                              renderConfig={{
-                                imageCache: this.imageCache,
-                                isExporting: false,
-                                renderGrid: false,
-                                canvasBackgroundColor:
-                                  this.state.viewBackgroundColor,
-                                embedsValidationStatus:
-                                  this.embedsValidationStatus,
-                                elementsPendingErasure:
-                                  this.elementsPendingErasure,
-                                pendingFlowchartNodes: null,
-                                theme: this.state.theme,
-                                isHighlighterPenDrawing: isHighlighter, //zsviczian
-                              }}
-                            />
-                          )}
+                            isHighlighter && ( //zsviczian
+                              <NewElementCanvas
+                                appState={this.state}
+                                newElement={newElementCanvasElement}
+                                scale={window.devicePixelRatio}
+                                rc={this.rc}
+                                elementsMap={renderableElementsMap}
+                                allElementsMap={allElementsMap}
+                                renderConfig={{
+                                  imageCache: this.imageCache,
+                                  isExporting: false,
+                                  renderGrid: false,
+                                  canvasBackgroundColor:
+                                    this.state.viewBackgroundColor,
+                                  embedsValidationStatus:
+                                    this.embedsValidationStatus,
+                                  elementsPendingErasure:
+                                    this.elementsPendingErasure,
+                                  pendingFlowchartNodes: null,
+                                  theme: this.state.theme,
+                                  isHighlighterPenDrawing: isHighlighter, //zsviczian
+                                }}
+                              />
+                            )}
                           <StaticCanvas
                             canvas={this.canvas}
                             rc={this.rc}
@@ -2709,30 +2852,31 @@ class App extends React.Component<AppProps, AppState> {
                               isHighlighterPenDrawing: isHighlighter, //zsviczian
                             }}
                           />
-                          {newElementCanvasElement && !isHighlighter && ( //zsviczian
-                            <NewElementCanvas
-                              appState={this.state}
-                              newElement={newElementCanvasElement}
-                              scale={window.devicePixelRatio}
-                              rc={this.rc}
-                              elementsMap={renderableElementsMap}
-                              allElementsMap={allElementsMap}
-                              renderConfig={{
-                                imageCache: this.imageCache,
-                                isExporting: false,
-                                renderGrid: false,
-                                canvasBackgroundColor:
-                                  this.state.viewBackgroundColor,
-                                embedsValidationStatus:
-                                  this.embedsValidationStatus,
-                                elementsPendingErasure:
-                                  this.elementsPendingErasure,
-                                pendingFlowchartNodes: null,
-                                theme: this.state.theme,
-                                isHighlighterPenDrawing: isHighlighter, //zsviczian
-                              }}
-                            />
-                          )}
+                          {newElementCanvasElement &&
+                            !isHighlighter && ( //zsviczian
+                              <NewElementCanvas
+                                appState={this.state}
+                                newElement={newElementCanvasElement}
+                                scale={window.devicePixelRatio}
+                                rc={this.rc}
+                                elementsMap={renderableElementsMap}
+                                allElementsMap={allElementsMap}
+                                renderConfig={{
+                                  imageCache: this.imageCache,
+                                  isExporting: false,
+                                  renderGrid: false,
+                                  canvasBackgroundColor:
+                                    this.state.viewBackgroundColor,
+                                  embedsValidationStatus:
+                                    this.embedsValidationStatus,
+                                  elementsPendingErasure:
+                                    this.elementsPendingErasure,
+                                  pendingFlowchartNodes: null,
+                                  theme: this.state.theme,
+                                  isHighlighterPenDrawing: isHighlighter, //zsviczian
+                                }}
+                              />
+                            )}
                           <InteractiveCanvas
                             app={this}
                             containerRef={this.excalidrawContainerRef}
@@ -3727,8 +3871,12 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   private getFormFactor = (editorWidth: number, editorHeight: number) => {
-    if (this.props.UIOptions.getFormFactor?.(editorWidth, editorHeight) === "phone" && !this.allowMobileMode) {
-      return getFormFactor(editorWidth, editorHeight, this.allowMobileMode) //zsviczian
+    if (
+      this.props.UIOptions.getFormFactor?.(editorWidth, editorHeight) ===
+        "phone" &&
+      !this.allowMobileMode
+    ) {
+      return getFormFactor(editorWidth, editorHeight, this.allowMobileMode); //zsviczian
     }
     return (
       this.props.UIOptions.getFormFactor?.(editorWidth, editorHeight) ??
@@ -3819,7 +3967,11 @@ class App extends React.Component<AppProps, AppState> {
       if (isInitializedImageElement(element) && files[element.fileId]) {
         //zsviczian cancel any pending image load promises to avoid memory leaks
         const cacheData = this.imageCache.get(element.fileId);
-        if (cacheData && cacheData.image instanceof Promise && typeof (cacheData.image as any).cancel === "function") {
+        if (
+          cacheData &&
+          cacheData.image instanceof Promise &&
+          typeof (cacheData.image as any).cancel === "function"
+        ) {
           (cacheData.image as any).cancel();
         }
 
@@ -3836,9 +3988,10 @@ class App extends React.Component<AppProps, AppState> {
     this.excalidrawContainerValue.container =
       this.excalidrawContainerRef.current;
 
-    //zsviczian disabling this code
-    /*
-    if (false && (isTestEnv() || isDevEnv())) {
+    // zsviczian -- restore the upstream-only test bridge. This branch is
+    // eliminated from production builds but keeps interaction tests usable in
+    // the maintained Obsidian fork.
+    if (window.h) {
       const setState = this.setState.bind(this);
       Object.defineProperties(window.h, {
         state: {
@@ -3870,7 +4023,7 @@ class App extends React.Component<AppProps, AppState> {
           value: this.fonts,
         },
       });
-    }*/
+    }
 
     this.store.onDurableIncrementEmitter.on((increment) => {
       this.history.record(increment.delta);
@@ -3925,6 +4078,9 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   public componentWillUnmount() {
+    this.clearPendingLineStyleShortcut(); // zsviczian -- clear host selector timers on unmount
+    this.clearPendingArrowheadShortcut(); // zsviczian -- clear host selector timers on unmount
+
     // we're recreating the api object reference so that the
     // <ExcalidrawAPIContext.Provider/> picks up on it
     this.api = { ...this.api, isDestroyed: true };
@@ -3959,7 +4115,10 @@ class App extends React.Component<AppProps, AppState> {
 
     //zsviczian
     for (const data of this.imageCache.values()) {
-      if (data.image instanceof Promise && typeof (data.image as any).cancel === "function") {
+      if (
+        data.image instanceof Promise &&
+        typeof (data.image as any).cancel === "function"
+      ) {
         (data.image as any).cancel();
       }
     }
@@ -4845,7 +5004,8 @@ class App extends React.Component<AppProps, AppState> {
 
       if (this.props.onPaste) {
         try {
-          if ((await this.props.onPaste(data, event, filesList)) === false) { //zsviczian
+          if ((await this.props.onPaste(data, event, filesList)) === false) {
+            //zsviczian
             return;
           }
         } catch (error: any) {
@@ -5270,7 +5430,8 @@ class App extends React.Component<AppProps, AppState> {
           outline: next?.outline ?? prevState.frameRendering.outline,
           //zsviczian
           markerName: next?.markerName ?? prevState.frameRendering.markerName,
-          markerEnabled: next?.markerEnabled ?? prevState.frameRendering.markerEnabled,
+          markerEnabled:
+            next?.markerEnabled ?? prevState.frameRendering.markerEnabled,
         },
       };
     });
@@ -5342,10 +5503,10 @@ class App extends React.Component<AppProps, AppState> {
   //zsviczian
   setForceRenderAllEmbeddables = (force: boolean) => {
     this.shouldRenderAllEmbeddables = force;
-    if(force) {
+    if (force) {
       this.setState({});
     }
-  }
+  };
 
   //zsviczian
   zoomToFit = (
@@ -5412,7 +5573,8 @@ class App extends React.Component<AppProps, AppState> {
     el: ExcalidrawLinearElement,
     selectedPointsIndices: number[] | null = null,
   ) => {
-    if (!el || !isLinearElement(el) || el.isDeleted) { //zsviczian
+    if (!el || !isLinearElement(el) || el.isDeleted) {
+      //zsviczian
       return;
     }
 
@@ -5691,7 +5853,7 @@ class App extends React.Component<AppProps, AppState> {
       if (sceneData.forceFlushSync === true) {
         flushSync(() => {
           if (appState) {
-           this.setState(appState as Pick<AppState, K> | null);
+            this.setState(appState as Pick<AppState, K> | null);
           }
         });
       } else if (appState) {
@@ -5839,6 +6001,16 @@ class App extends React.Component<AppProps, AppState> {
         });
       }
 
+      const nativeKeyboardEvent =
+        "nativeEvent" in event ? event.nativeEvent : event;
+      if (
+        nativeKeyboardEvent.isComposing ||
+        event.key === "Process" ||
+        event.keyCode === 229
+      ) {
+        return;
+      }
+
       if (!isInputLike(event.target)) {
         if (
           (event.key === KEYS.ESCAPE || event.key === KEYS.ENTER) &&
@@ -5947,17 +6119,125 @@ class App extends React.Component<AppProps, AppState> {
         return;
       }
 
+      const canHandleHostPropertyShortcut =
+        this.props.toolShortcutPreferences !== undefined &&
+        !this.state.viewModeEnabled &&
+        !this.state.editingTextElement &&
+        !isWritableElement(event.target) &&
+        !isInputLike(event.target);
+      const lowerCaseKey = event.key.toLowerCase();
+      const isPlainShortcut =
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey;
+
+      // zsviczian START -- host property shortcuts (`ls/ld/lt/la` and the
+      // two-stroke Arrowhead selector) stay independent of standalone keys.
+      if (this.pendingLineStyleShortcut) {
+        if (event.repeat && lowerCaseKey === KEYS.L) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
+        this.clearPendingLineStyleShortcut();
+        if (
+          canHandleHostPropertyShortcut &&
+          isPlainShortcut &&
+          !event.repeat &&
+          (lowerCaseKey === KEYS.S ||
+            lowerCaseKey === KEYS.D ||
+            lowerCaseKey === KEYS.T ||
+            lowerCaseKey === KEYS.A)
+        ) {
+          if (lowerCaseKey === KEYS.A) {
+            this.actionManager.executeAction(
+              actionApplyLineAnimation,
+              "keyboard",
+            );
+          } else {
+            this.actionManager.executeAction(
+              actionChangeQuickLineStyle,
+              "keyboard",
+              lowerCaseKey === KEYS.S
+                ? "solid"
+                : lowerCaseKey === KEYS.D
+                ? "dashed"
+                : "dotted",
+            );
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+
+      if (this.pendingArrowheadShortcut) {
+        if (event.repeat && lowerCaseKey === KEYS.A) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
+        this.clearPendingArrowheadShortcut();
+        const arrowhead = HOST_ARROWHEAD_SHORTCUTS[lowerCaseKey];
+        if (
+          canHandleHostPropertyShortcut &&
+          !event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.repeat &&
+          arrowhead !== undefined
+        ) {
+          this.actionManager.executeAction(
+            actionChangeArrowhead,
+            "keyboard",
+            {
+              position: event.shiftKey ? "start" : "end",
+              type: arrowhead,
+            },
+          );
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+
+      if (
+        canHandleHostPropertyShortcut &&
+        isPlainShortcut &&
+        !event.repeat &&
+        lowerCaseKey === KEYS.L
+      ) {
+        this.startPendingLineStyleShortcut();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      if (
+        canHandleHostPropertyShortcut &&
+        isPlainShortcut &&
+        !event.repeat &&
+        lowerCaseKey === KEYS.A
+      ) {
+        this.startPendingArrowheadShortcut();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      // zsviczian END
+
       //mfuria #329. open context menu with 'm' if not editing text and container focused
       if (
         isPanWithRightMouseEnabled() &&
-        event.key.toLowerCase() === 'm' &&
+        event.key.toLowerCase() === "m" &&
         !this.state.editingTextElement &&
         // don't trigger when typing in inputs
         !isInputLike(event.target) &&
         // ensure focus is within excalidraw container
-        this.excalidrawContainerRef?.current?.contains(
-          document.activeElement,
-        )
+        this.excalidrawContainerRef?.current?.contains(document.activeElement)
       ) {
         //zsviczian START #329 trigger the canonical context-menu action at the current cursor position
         this.handleCanvasContextMenu(
@@ -5967,9 +6247,7 @@ class App extends React.Component<AppProps, AppState> {
             clientY: this.viewport.lastPosition.y,
             nativeEvent: new MouseEvent("contextmenu"),
             preventDefault: () => event.preventDefault(),
-          } as unknown as React.MouseEvent<
-            HTMLElement | HTMLCanvasElement
-          >,
+          } as unknown as React.MouseEvent<HTMLElement | HTMLCanvasElement>,
           true,
         );
         //zsviczian END
@@ -6036,6 +6314,7 @@ class App extends React.Component<AppProps, AppState> {
         !event.ctrlKey &&
         !event.altKey &&
         !event.metaKey &&
+        !this.state.editingTextElement &&
         !this.state.newElement &&
         !this.state.selectionElement &&
         !this.state.selectedElementsAreBeingDragged
@@ -6064,6 +6343,8 @@ class App extends React.Component<AppProps, AppState> {
                 ? ARROW_TYPE.round
                 : this.state.currentItemArrowType === ARROW_TYPE.round
                 ? ARROW_TYPE.elbow
+                : this.state.currentItemArrowType === ARROW_TYPE.elbow
+                ? ARROW_TYPE.curve
                 : ARROW_TYPE.sharp;
             this.setState({ currentItemArrowType: nextArrowType });
             this.cursorHints.onArrowTypeCycled(nextArrowType);
@@ -6258,7 +6539,9 @@ class App extends React.Component<AppProps, AppState> {
       if (
         (event.key === KEYS.G || event.key === KEYS.S) &&
         !event.altKey &&
-        !event[KEYS.CTRL_OR_CMD]
+        !event[KEYS.CTRL_OR_CMD] &&
+        !event.shiftKey &&
+        !this.state.editingTextElement
       ) {
         const selectedElements = this.scene.getSelectedElements(this.state);
         if (
@@ -6273,11 +6556,17 @@ class App extends React.Component<AppProps, AppState> {
           (hasBackground(this.state.activeTool.type) ||
             selectedElements.some((element) => hasBackground(element.type)))
         ) {
-          this.setState({ openPopup: "elementBackground" });
+          this.setState({
+            openMenu: "shape",
+            openPopup: "elementBackground",
+          });
           event.stopPropagation();
         }
         if (event.key === KEYS.S) {
-          this.setState({ openPopup: "elementStroke" });
+          this.setState({
+            openMenu: "shape",
+            openPopup: "elementStroke",
+          });
           event.stopPropagation();
         }
       }
@@ -6848,7 +7137,9 @@ class App extends React.Component<AppProps, AppState> {
               );
             nextOriginalText = updatedNextOriginalText ?? nextOriginalText;
             hasTextLink = !!nextLink;
-            link = syncElementLinkWithText() ? nextLink : element.link ?? undefined;
+            link = syncElementLinkWithText()
+              ? nextLink
+              : element.link ?? undefined;
           }
         }
         //zsviczian insert end
@@ -7804,11 +8095,12 @@ class App extends React.Component<AppProps, AppState> {
         }
 
         //zsviczian Disable double click text create, but allow double click edit
-        if(disableDoubleClickTextEditing()) {
-          let existingTextElement: NonDeleted<ExcalidrawTextElement> | null = null;
+        if (disableDoubleClickTextEditing()) {
+          let existingTextElement: NonDeleted<ExcalidrawTextElement> | null =
+            null;
 
           const selectedElements = this.scene.getSelectedElements(this.state);
-      
+
           if (selectedElements.length === 1) {
             if (isTextElement(selectedElements[0])) {
               existingTextElement = selectedElements[0];
@@ -7818,7 +8110,10 @@ class App extends React.Component<AppProps, AppState> {
                 this.scene.getNonDeletedElementsMap(),
               );
             } else {
-              existingTextElement = this.getTextElementAtPosition(sceneX, sceneY);
+              existingTextElement = this.getTextElementAtPosition(
+                sceneX,
+                sceneY,
+              );
             }
           } else {
             existingTextElement = this.getTextElementAtPosition(sceneX, sceneY);
@@ -7933,7 +8228,8 @@ class App extends React.Component<AppProps, AppState> {
     if (lastPointerDownHittingLinkIcon && lastPointerUpHittingLinkIcon) {
       hideHyperlinkToolip();
       let url = this.hitLinkElement.link;
-      if (url || this.hitLinkElement.hasTextLink) { //zsviczian
+      if (url || this.hitLinkElement.hasTextLink) {
+        //zsviczian
         url = normalizeLink(url ?? ""); //zsviczian
         let customEvent;
         if (this.props.onLinkOpen) {
@@ -7965,7 +8261,7 @@ class App extends React.Component<AppProps, AppState> {
    * link is being hovered.
    */
   private applyElementLinkHoverAffordance = (
-    event: React.PointerEvent<HTMLCanvasElement> //zsviczian
+    event: React.PointerEvent<HTMLCanvasElement>, //zsviczian
   ): boolean => {
     if (
       this.hitLinkElement &&
@@ -8056,7 +8352,8 @@ class App extends React.Component<AppProps, AppState> {
     this.hitLinkElement = this.isLinksEnabled()
       ? this.getElementLinkAtPosition(scenePointer, hitElementMightBeLocked)
       : undefined;
-    if (!this.applyElementLinkHoverAffordance(event)) { //zsviczian
+    if (!this.applyElementLinkHoverAffordance(event)) {
+      //zsviczian
       this.cursor.reset();
     }
   };
@@ -8105,13 +8402,12 @@ class App extends React.Component<AppProps, AppState> {
     },
   ) => {
     const elementsMap = this.scene.getNonDeletedElementsMap();
-    const framesUnderCursor = this.scene
-      .getNonDeletedFramesLikes()
-      .filter(
-        (frame) =>
-          !frame.locked && isCursorInFrame(sceneCoords, frame, elementsMap) &&
-          frame.frameRole !== "marker", //zsviczian
-      );
+    const framesUnderCursor = this.scene.getNonDeletedFramesLikes().filter(
+      (frame) =>
+        !frame.locked &&
+        isCursorInFrame(sceneCoords, frame, elementsMap) &&
+        frame.frameRole !== "marker", //zsviczian
+    );
 
     if (!framesUnderCursor.length) {
       return null;
@@ -8201,7 +8497,10 @@ class App extends React.Component<AppProps, AppState> {
     );
   };
 
-  public insertNewElements = (elements: readonly ExcalidrawElement[], idx?: number) => {
+  public insertNewElements = (
+    elements: readonly ExcalidrawElement[],
+    idx?: number,
+  ) => {
     //zsviczian added idx for highligher pens
     if (!elements.length) {
       return;
@@ -8301,11 +8600,10 @@ class App extends React.Component<AppProps, AppState> {
     ) {
       if (isOverScrollBar) {
         //zsviczian https://github.com/zsviczian/obsidian-excalidraw-plugin/issues/1659
-        const cursor = isPenFreedraw &&
-          this.interactiveCanvas &&
-          hideFreedrawPenmodeCursor()
-          ? "none"
-          : CURSOR_TYPE.AUTO;
+        const cursor =
+          isPenFreedraw && this.interactiveCanvas && hideFreedrawPenmodeCursor()
+            ? "none"
+            : CURSOR_TYPE.AUTO;
         this.cursor.set(cursor);
       } else {
         this.cursor.applyForTool();
@@ -8990,7 +9288,7 @@ class App extends React.Component<AppProps, AppState> {
       const onContextMenu = (e: MouseEvent) => {
         e.preventDefault();
       };
-      window.addEventListener('contextmenu', onContextMenu, { once: true });
+      window.addEventListener("contextmenu", onContextMenu, { once: true });
 
       // Start right-click panning
       this.startRightClickPanning(event);
@@ -9729,9 +10027,7 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   //mfuria #329. start right-click panning
-  private startRightClickPanning(
-    event: React.PointerEvent<HTMLElement>,
-  ): void {
+  private startRightClickPanning(event: React.PointerEvent<HTMLElement>): void {
     // Set up right-click panning similar to hand tool
     isPanning = true;
     this.focusContainer();
@@ -9778,7 +10074,7 @@ class App extends React.Component<AppProps, AppState> {
       passive: true,
     });
     window.addEventListener(EVENT.POINTER_UP, teardown);
-  };
+  }
 
   private updateGestureOnPointerDown(
     event: React.PointerEvent<HTMLElement>,
@@ -9789,7 +10085,8 @@ class App extends React.Component<AppProps, AppState> {
     });
 
     if (gesture.pointers.size === 2) {
-      if (shouldDisableZoom(this.state)) { //zsviczian
+      if (shouldDisableZoom(this.state)) {
+        //zsviczian
         gesture.initialDistance = null;
       } else {
         gesture.lastCenter = getCenter(gesture.pointers);
@@ -10181,10 +10478,8 @@ class App extends React.Component<AppProps, AppState> {
           (el) => this.state.selectedElementIds[el.id],
         ); //zsviczian
         // Prioritize unlocked elements over locked ones
-        if (
-          !isUnlockedHitElSelected &&
-          unlockedHitElements.length > 0
-        ) { //zsviczian https://github.com/excalidraw/excalidraw/pull/9582
+        if (!isUnlockedHitElSelected && unlockedHitElements.length > 0) {
+          //zsviczian https://github.com/excalidraw/excalidraw/pull/9582
           // If there are unlocked elements, use the topmost one
           pointerDownState.hit.element =
             unlockedHitElements[unlockedHitElements.length - 1];
@@ -10953,6 +11248,17 @@ class App extends React.Component<AppProps, AppState> {
                 this.state.currentItemArrowType === ARROW_TYPE.elbow
                   ? []
                   : null,
+              customData: {
+                ...(this.state.currentItemSnap !== "none"
+                  ? { snap: this.state.currentItemSnap }
+                  : {}),
+                // zsviczian -- Block arrowheads support the same automatic
+                // cubic centerline as every other arrowhead. Preserve the
+                // selected arrow type regardless of endpoint picker order.
+                ...(this.state.currentItemArrowType === ARROW_TYPE.curve
+                  ? { curveArrow: true }
+                  : {}),
+              },
             })
           : newLinearElement({
               type: elementType,
@@ -10992,9 +11298,10 @@ class App extends React.Component<AppProps, AppState> {
 
       this.insertNewElement(element);
 
+      let snappedInitialArrowPoint: GlobalPoint | null = null;
       if (isBindingElement(element)) {
         // Do the initial binding so the binding strategy has the initial state
-        bindOrUnbindBindingElement(
+        const initialBinding = bindOrUnbindBindingElement(
           element,
           new Map([
             [
@@ -11016,6 +11323,23 @@ class App extends React.Component<AppProps, AppState> {
             angleLocked: shouldRotateWithDiscreteAngle(event.nativeEvent),
           },
         );
+
+        // zsviczian START -- official binding intentionally leaves a new
+        // [0,0] -> [0,0] arrow in place until it has length. YMJR Points/Edge
+        // semantics need the start endpoint to move immediately to the chosen
+        // candidate so pointer-down itself is a real snapped start.
+        if (
+          isArrowElement(element) &&
+          getArrowSnapMode(element) !== "none" &&
+          initialBinding.start.focusPoint
+        ) {
+          snappedInitialArrowPoint = initialBinding.start.focusPoint;
+          this.scene.mutateElement(element, {
+            x: snappedInitialArrowPoint[0],
+            y: snappedInitialArrowPoint[1],
+          });
+        }
+        // zsviczian END
       }
 
       // NOTE: We need the flushSync here for the
@@ -11040,8 +11364,8 @@ class App extends React.Component<AppProps, AppState> {
                 arrowStartIsInside: event.altKey,
                 lastClickedPoint: endIdx,
                 origin: pointFrom<GlobalPoint>(
-                  pointerDownState.origin.x,
-                  pointerDownState.origin.y,
+                  snappedInitialArrowPoint?.[0] ?? pointerDownState.origin.x,
+                  snappedInitialArrowPoint?.[1] ?? pointerDownState.origin.y,
                 ),
               },
             };
@@ -11437,6 +11761,12 @@ class App extends React.Component<AppProps, AppState> {
         }
 
         if (
+          !(
+            LinearElementEditor.getElement(
+              this.state.selectedLinearElement.elementId,
+              elementsMap,
+            ) as ExcalidrawLinearElement | null
+          )?.customData?.curveArrow &&
           LinearElementEditor.shouldAddMidpoint(
             this.state.selectedLinearElement,
             pointerCoords,
@@ -12527,7 +12857,11 @@ class App extends React.Component<AppProps, AppState> {
           newElement &&
           !multiElement
         ) {
-          if (this.editorInterface.isTouchScreen && newElement.points.length > 1) { //zsviczian
+          if (
+            this.editorInterface.isTouchScreen &&
+            newElement.points.length > 1
+          ) {
+            //zsviczian
             const FIXED_DELTA_X = Math.min(
               (this.state.width * 0.7) / this.state.zoom.value,
               100,
@@ -13760,7 +14094,8 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   private handleAppOnDrop = async (event: React.DragEvent<HTMLDivElement>) => {
-    if (this.props.onDrop) { //zsviczian
+    if (this.props.onDrop) {
+      //zsviczian
       try {
         if ((await this.props.onDrop(event)) === false) {
           return;
@@ -13987,7 +14322,8 @@ class App extends React.Component<AppProps, AppState> {
       return;
     }
     event.preventDefault();
-    if (this.state.disableContextMenu) { //zsviczian
+    if (this.state.disableContextMenu) {
+      //zsviczian
       return;
     }
     //mfuria #329. if right-click pan is enabled, we suppress opening our custom menu too.
@@ -14798,7 +15134,11 @@ class App extends React.Component<AppProps, AppState> {
 // -----------------------------------------------------------------------------
 // TEST HOOKS
 // -----------------------------------------------------------------------------
-/* //zsviczian - I get a type error on h, but anyway I don't need this test hook
+const isInteractionTestEnv = () =>
+  isTestEnv() ||
+  isDevEnv() ||
+  (typeof process !== "undefined" && process.env.NODE_ENV === "test");
+
 declare global {
   interface Window {
     h: {
@@ -14814,32 +15154,32 @@ declare global {
   }
 }
 
+// zsviczian -- test-only bridge used by the existing Excalidraw interaction
+// helpers. Keeping it available is required for fork regression tests.
 export const createTestHook = () => {
-  if (isTestEnv() || isDevEnv()) {
-    window.h = window.h || ({} as Window["h"]);
+  window.h = window.h || ({} as Window["h"]);
 
-    Object.defineProperties(window.h, {
-      elements: {
-        configurable: true,
-        get() {
-          return this.app?.scene.getElementsIncludingDeleted();
-        },
-        set(elements: ExcalidrawElement[]) {
-          return this.app?.scene.replaceAllElements(
-            syncInvalidIndices(elements),
-          );
-        },
+  Object.defineProperties(window.h, {
+    elements: {
+      configurable: true,
+      get() {
+        return this.app?.scene.getElementsIncludingDeleted();
       },
-      scene: {
-        configurable: true,
-        get() {
-          return this.app?.scene;
-        },
+      set(elements: ExcalidrawElement[]) {
+        return this.app?.scene.replaceAllElements(syncInvalidIndices(elements));
       },
-    });
-  }
+    },
+    scene: {
+      configurable: true,
+      get() {
+        return this.app?.scene;
+      },
+    },
+  });
 };
 
-createTestHook();*/
+if (isInteractionTestEnv()) {
+  createTestHook();
+}
 
 export default App;

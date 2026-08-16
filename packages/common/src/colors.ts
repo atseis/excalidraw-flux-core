@@ -209,6 +209,12 @@ export const COLOR_PALETTE = {
   orange: ["#fff4e6", "#ffd8a8", "#ffa94d", "#fd7e14", "#e8590c"],
   // radix bronze shades [3,5,7,9,11]
   bronze: ["#f8f1ee", "#eaddd7", "#d2bab0", "#a18072", "#846358"],
+  // zsviczian -- expanded host palette for mnemonic `s`/`g` color shortcuts.
+  navy: ["#edf2ff", "#bac8ff", "#748ffc", "#4c6ef5", "#364fc7"],
+  lime: ["#f4fce3", "#d8f5a2", "#a9e34b", "#82c91e", "#5c940d"],
+  mint: ["#e6fcf5", "#b2f2e9", "#63e6be", "#20c997", "#087f5b"],
+  olive: ["#f8f9e8", "#e9edc9", "#ccd5ae", "#a3b18a", "#606c38"],
+  plum: ["#f9f0ff", "#e8c2ff", "#c77dff", "#9d4edd", "#5a189a"],
 } as const;
 
 export type ColorPalette = typeof COLOR_PALETTE;
@@ -225,6 +231,12 @@ const COMMON_ELEMENT_SHADES = pick(COLOR_PALETTE, [
   "yellow",
   "orange",
   "red",
+  // zsviczian -- fourth mnemonic color row: n/l/m/o/p.
+  "navy",
+  "lime",
+  "mint",
+  "olive",
+  "plum",
 ]);
 
 // quick picks defaults
