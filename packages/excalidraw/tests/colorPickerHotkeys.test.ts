@@ -95,6 +95,16 @@ describe("color picker hotkeys", () => {
     ["m", "mint"],
     ["o", "olive"],
     ["p", "plum"],
+    ["h", "coral"],
+    ["j", "amber"],
+    ["k", "chartreuse"],
+    ["u", "forest"],
+    ["y", "turquoise"],
+    ["[", "azure"],
+    ["]", "indigo"],
+    [";", "lavender"],
+    ["'", "magenta"],
+    [",", "burgundy"],
   ] as const)("selects the expanded %s color family", (key, colorName) => {
     const onChange = vi.fn();
     const handled = colorPickerKeyNavHandler(

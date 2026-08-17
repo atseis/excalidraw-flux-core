@@ -553,7 +553,12 @@ export const actionChangeBucketFillBackgroundColor = register<
         )}
         <ColorPicker
           topPicks={BUCKET_FILL_BACKGROUND_PICKS}
-          palette={DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE}
+          palette={
+            // zsviczian -- Bucket Fill reuses the host/background palette so
+            // B, G, and their palette hotkeys always expose the same colors.
+            appState.colorPalette?.elementBackground ??
+            DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE
+          }
           // hidden rather than removed from the palette so the remaining
           // colors keep their usual hotkeys (w for white etc.)
           excludedColors={[COLOR_PALETTE.transparent]}
@@ -988,8 +993,7 @@ export const actionApplyLineAnimation = register({
     const nextElements = changeProperty(elements, appState, (element) => {
       if (
         (!isLineElement(element) && !isArrowElement(element)) ||
-        (element.strokeStyle !== "dashed" &&
-          element.strokeStyle !== "dotted")
+        (element.strokeStyle !== "dashed" && element.strokeStyle !== "dotted")
       ) {
         return element;
       }

@@ -40,6 +40,8 @@ export const colorPickerHotkeyBindings = [
   ["a", "s", "d", "f", "g"],
   ["z", "x", "c", "v", "b"],
   ["n", "l", "m", "o", "p"], // zsviczian -- expanded mnemonic palette row
+  ["h", "j", "k", "u", "y"], // zsviczian -- spectrum expansion row one; I is Eyedropper
+  ["[", "]", ";", "'", ","], // zsviczian -- spectrum expansion row two
 ].flat();
 
 export const isCustomColor = ({

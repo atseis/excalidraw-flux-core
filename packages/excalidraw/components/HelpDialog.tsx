@@ -154,7 +154,10 @@ export const HelpDialog = ({ onClose }: { onClose?: () => void }) => {
             className="HelpDialog__island--tools"
             caption={t("helpDialog.tools")}
           >
-            <Shortcut label={t("toolBar.hand")} shortcuts={[KEYS.H]} />
+            <Shortcut
+              label={t("toolBar.hand")}
+              shortcuts={toolShortcuts("hand")} // zsviczian -- hide H when the host reserves it for Arrowheads
+            />
             <Shortcut
               label={t("toolBar.selection")}
               shortcuts={toolShortcuts("selection")}

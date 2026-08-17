@@ -1,4 +1,8 @@
-import { reseed, resolvablePromise } from "@excalidraw/common";
+import {
+  COLOR_PALETTE,
+  reseed,
+  resolvablePromise,
+} from "@excalidraw/common";
 import { pointFrom, type LocalPoint } from "@excalidraw/math";
 import {
   CaptureUpdateAction,
@@ -7,6 +11,8 @@ import {
   newElement,
   ShapeCache,
 } from "@excalidraw/element";
+
+import type { Arrowhead } from "@excalidraw/element/types";
 
 import { Excalidraw } from "../index";
 import { actionChangeArrowType } from "../actions/actionProperties";
@@ -26,7 +32,6 @@ import type {
   ExcalidrawImperativeAPI,
   ToolShortcutPreferences,
 } from "../types";
-import type { Arrowhead } from "@excalidraw/element/types";
 
 unmountComponent();
 
@@ -61,11 +66,24 @@ const ARROWHEAD_SHORTCUTS = [
   ["v", "cardinality_one_or_many"],
 ] as const satisfies readonly (readonly [string, Arrowhead | null])[];
 
+const CONNECTION_MODE_SHORTCUTS = [
+  ["o", "none"],
+  ["p", "points"],
+  ["e", "edge"],
+] as const;
+
+const ARROW_TYPE_SHORTCUTS = [
+  ["s", "sharp"],
+  ["c", "round"],
+  ["e", "elbow"],
+  ["a", "curve"],
+] as const;
+
 const pressArrowheadShortcut = (
   secondKey: string,
   position: "start" | "end" = "end",
 ) => {
-  fireEvent.keyDown(document, { key: "a", code: "KeyA" });
+  fireEvent.keyDown(document, { key: "h", code: "KeyH" });
   fireEvent.keyDown(document, {
     key: position === "start" ? secondKey.toUpperCase() : secondKey,
     code: `Key${secondKey.toUpperCase()}`,
@@ -80,6 +98,11 @@ describe("YMJR-compatible arrow interaction", () => {
 
   beforeAll(() => {
     mockBoundingClientRect();
+    (global as any).ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
   });
 
   afterAll(() => {
@@ -472,7 +495,7 @@ describe("YMJR-compatible arrow interaction", () => {
   });
 
   it.each(ARROWHEAD_SHORTCUTS)(
-    "sets the selected arrow's end and start Arrowheads through a%s",
+    "sets the selected arrow's end and start Arrowheads through h%s",
     (secondKey, arrowhead) => {
       const arrow = API.createElement({
         type: "arrow",
@@ -504,7 +527,7 @@ describe("YMJR-compatible arrow interaction", () => {
   );
 
   it.each(ARROWHEAD_SHORTCUTS)(
-    "sets the default end and start Arrowheads through a%s when nothing is selected",
+    "sets the default end and start Arrowheads through h%s when nothing is selected",
     (secondKey, arrowhead) => {
       act(() => {
         pressArrowheadShortcut(secondKey);
@@ -555,5 +578,167 @@ describe("YMJR-compatible arrow interaction", () => {
       keepMe: true,
     });
     expect(excalidrawAPI.getAppState().currentItemArrowType).toBe("curve");
+  });
+
+  it.each(CONNECTION_MODE_SHORTCUTS)(
+    "changes Connection Mode through c%s",
+    (secondKey, connectionMode) => {
+      const arrow = {
+        ...API.createElement({
+          type: "arrow",
+          x: 50,
+          y: 50,
+          points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(220, 80)],
+        }),
+        customData: { snap: "edge", keepMe: true },
+      };
+      API.setElements([arrow]);
+      API.setSelectedElements([arrow]);
+
+      act(() => {
+        fireEvent.keyDown(document, { key: "c", code: "KeyC" });
+        fireEvent.keyDown(document, {
+          key: secondKey,
+          code: `Key${secondKey.toUpperCase()}`,
+        });
+      });
+
+      const changedArrow = excalidrawAPI
+        .getSceneElements()
+        .find(isArrowElement)!;
+      expect(excalidrawAPI.getAppState().currentItemSnap).toBe(connectionMode);
+      expect(changedArrow.customData?.snap).toBe(
+        connectionMode === "none" ? undefined : connectionMode,
+      );
+      expect(changedArrow.customData?.keepMe).toBe(true);
+    },
+  );
+
+  it.each(ARROW_TYPE_SHORTCUTS)(
+    "changes Arrow Type through a%s",
+    (secondKey, arrowType) => {
+      const arrow = API.createElement({
+        type: "arrow",
+        x: 50,
+        y: 50,
+        points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(220, 80)],
+      });
+      API.setElements([arrow]);
+      API.setSelectedElements([arrow]);
+
+      act(() => {
+        fireEvent.keyDown(document, { key: "a", code: "KeyA" });
+        fireEvent.keyDown(document, {
+          key: secondKey,
+          code: `Key${secondKey.toUpperCase()}`,
+        });
+      });
+
+      const changedArrow = excalidrawAPI
+        .getSceneElements()
+        .find(isArrowElement)!;
+      expect(excalidrawAPI.getAppState().currentItemArrowType).toBe(arrowType);
+      expect(changedArrow.elbowed).toBe(arrowType === "elbow");
+      expect(changedArrow.customData?.curveArrow).toBe(
+        arrowType === "curve" ? true : undefined,
+      );
+      expect(Boolean(changedArrow.roundness)).toBe(arrowType === "round");
+    },
+  );
+
+  it("keeps the shared Bucket Fill palette open through color changes and painting", async () => {
+    const rectangle = API.createElement({
+      type: "rectangle",
+      x: 20,
+      y: 20,
+      width: 120,
+      height: 100,
+      roundness: null,
+      backgroundColor: COLOR_PALETTE.transparent,
+    });
+    API.setElements([rectangle]);
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "b", code: "KeyB" });
+    });
+
+    await waitFor(() => {
+      expect(excalidrawAPI.getAppState().activeTool.type).toBe("bucketfill");
+      expect(excalidrawAPI.getAppState().openPopup).toBe("elementBackground");
+    });
+
+    const picker = document.querySelector(".color-picker-content")!;
+    expect(picker).not.toBeNull();
+
+    act(() => {
+      fireEvent.keyDown(picker, { key: "a", code: "KeyA" });
+    });
+    expect(excalidrawAPI.getAppState().currentItemBackgroundColor).toBe(
+      COLOR_PALETTE.cyan[1],
+    );
+    expect(excalidrawAPI.getAppState().openPopup).toBe("elementBackground");
+
+    act(() => {
+      fireEvent.keyDown(picker, { key: "s", code: "KeyS" });
+    });
+    expect(excalidrawAPI.getAppState().currentItemBackgroundColor).toBe(
+      COLOR_PALETTE.blue[1],
+    );
+    expect(excalidrawAPI.getAppState().openPopup).toBe("elementBackground");
+
+    act(() => {
+      fireEvent.keyDown(picker, {
+        key: "@",
+        code: "Digit2",
+        shiftKey: true,
+      });
+    });
+    expect(excalidrawAPI.getAppState().currentItemBackgroundColor).toBe(
+      COLOR_PALETTE.blue[1],
+    );
+    expect(excalidrawAPI.getAppState().openPopup).toBe("elementBackground");
+
+    act(() => {
+      fireEvent.pointerDown(interactiveCanvas, {
+        clientX: 80,
+        clientY: 70,
+        button: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerUp(interactiveCanvas, {
+        clientX: 80,
+        clientY: 70,
+        button: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        excalidrawAPI
+          .getSceneElements()
+          .filter((element) => element.type === "line"),
+      ).toHaveLength(1);
+      expect(excalidrawAPI.getAppState().openPopup).toBe(
+        "elementBackground",
+      );
+    });
+
+    act(() => {
+      fireEvent.keyDown(picker, { key: "Escape", code: "Escape" });
+    });
+    expect(excalidrawAPI.getAppState().openPopup).toBeNull();
+  });
+
+  it("reserves h for Arrowheads instead of activating Hand in host mode", () => {
+    expect(excalidrawAPI.getAppState().activeTool.type).toBe("selection");
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+    });
+
+    expect(excalidrawAPI.getAppState().activeTool.type).toBe("selection");
   });
 });

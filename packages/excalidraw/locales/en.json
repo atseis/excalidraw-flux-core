@@ -608,7 +608,17 @@
     "lime": "Lime",
     "mint": "Mint",
     "olive": "Olive",
-    "plum": "Plum"
+    "plum": "Plum",
+    "coral": "Coral",
+    "amber": "Amber",
+    "chartreuse": "Chartreuse",
+    "forest": "Forest green",
+    "turquoise": "Turquoise",
+    "azure": "Azure",
+    "indigo": "Indigo",
+    "lavender": "Lavender",
+    "magenta": "Magenta",
+    "burgundy": "Burgundy"
   },
   "welcomeScreen": {
     "app": {

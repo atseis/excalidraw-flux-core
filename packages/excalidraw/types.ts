@@ -990,8 +990,8 @@ export interface ExcalidrawProps {
     | { type: "custom"; customType: string };
   /**
    * Enables/disables the digit and letter aliases of tools 0–8. Supplying
-   * this object also enables the host-oriented `l` line-style and `a`
-   * Arrowhead selectors.
+   * this object also enables the host-oriented `l` line-style, `c`
+   * Connection Mode, `a` Arrow Type, and `h` Arrowhead selectors.
    * Omit to preserve the upstream standalone shortcut behavior.
    */
   toolShortcutPreferences?: ToolShortcutPreferences;

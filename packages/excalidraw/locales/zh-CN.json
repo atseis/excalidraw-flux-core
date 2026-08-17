@@ -597,7 +597,17 @@
     "lime": "青柠",
     "mint": "薄荷",
     "olive": "橄榄",
-    "plum": "梅紫"
+    "plum": "梅紫",
+    "coral": "珊瑚",
+    "amber": "琥珀",
+    "chartreuse": "黄绿色",
+    "forest": "森林绿",
+    "turquoise": "绿松石",
+    "azure": "天蓝",
+    "indigo": "靛蓝",
+    "lavender": "薰衣草紫",
+    "magenta": "洋红",
+    "burgundy": "酒红"
   },
   "welcomeScreen": {
     "app": {

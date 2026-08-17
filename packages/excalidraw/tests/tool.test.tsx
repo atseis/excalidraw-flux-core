@@ -160,11 +160,18 @@ describe("findShapeByKey()", () => {
     });
     expect(findShapeByKey("8", app)).toBeNull();
 
-    ["e", "v", "r", "d", "o", "a", "l", "p", "x"].forEach(
-      (key) => expect(findShapeByKey(key, app)).toBeNull(),
+    ["e", "v", "r", "d", "o", "a", "l", "p", "x"].forEach((key) =>
+      expect(findShapeByKey(key, app)).toBeNull(),
     );
     expect(findShapeByKey("t", app)).toBe("text");
+    expect(findShapeByKey("h", app)).toBeNull();
     expect(findShapeByKey("x", app, true)).toBe("autoshape");
+  });
+
+  it("keeps h as the Hand shortcut without host preferences", () => {
+    const app = appWithPreferredTool("selection");
+
+    expect(findShapeByKey("h", app)).toBe("hand");
   });
 
   it("can independently disable both aliases or enable only the letter", () => {

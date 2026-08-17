@@ -209,12 +209,25 @@ export const COLOR_PALETTE = {
   orange: ["#fff4e6", "#ffd8a8", "#ffa94d", "#fd7e14", "#e8590c"],
   // radix bronze shades [3,5,7,9,11]
   bronze: ["#f8f1ee", "#eaddd7", "#d2bab0", "#a18072", "#846358"],
-  // zsviczian -- expanded host palette for mnemonic `s`/`g` color shortcuts.
-  navy: ["#edf2ff", "#bac8ff", "#748ffc", "#4c6ef5", "#364fc7"],
-  lime: ["#f4fce3", "#d8f5a2", "#a9e34b", "#82c91e", "#5c940d"],
-  mint: ["#e6fcf5", "#b2f2e9", "#63e6be", "#20c997", "#087f5b"],
-  olive: ["#f8f9e8", "#e9edc9", "#ccd5ae", "#a3b18a", "#606c38"],
-  plum: ["#f9f0ff", "#e8c2ff", "#c77dff", "#9d4edd", "#5a189a"],
+  // zsviczian START -- expanded host palette for mnemonic `s`/`g`/`b`
+  // color shortcuts. The second expansion fills gaps around the hue wheel;
+  // every family retains five ordered light-to-dark shades.
+  navy: ["#f1f5ff", "#a9bee8", "#5f7fb8", "#31558f", "#19345f"],
+  lime: ["#f7fee7", "#bef264", "#84cc16", "#4d7c0f", "#365314"],
+  mint: ["#ecfdf5", "#6ee7b7", "#10b981", "#047857", "#064e3b"],
+  olive: ["#faf9e8", "#d5d081", "#9a952f", "#666314", "#3f3f0b"],
+  plum: ["#fdf2f8", "#f0a8d0", "#d946a0", "#a21caf", "#701a75"],
+  coral: ["#fff1ed", "#fdbaaa", "#fb7a5b", "#dc3f24", "#8f2518"],
+  amber: ["#fffbeb", "#fcd34d", "#f59e0b", "#b45309", "#78350f"],
+  chartreuse: ["#f5ffe6", "#c7f36b", "#8fd11f", "#5b8f12", "#35530b"],
+  forest: ["#f0f8f1", "#91c99a", "#3f8f55", "#276738", "#143d23"],
+  turquoise: ["#f0fdfa", "#5eead4", "#14b8a6", "#0f766e", "#134e4a"],
+  azure: ["#f0f9ff", "#7dd3fc", "#0ea5e9", "#0369a1", "#0c4a6e"],
+  indigo: ["#eef2ff", "#a5b4fc", "#6366f1", "#4338ca", "#312e81"],
+  lavender: ["#faf5ff", "#d8b4fe", "#a855f7", "#7e22ce", "#581c87"],
+  magenta: ["#fdf4ff", "#f0abfc", "#d946ef", "#a21caf", "#701a75"],
+  burgundy: ["#fff1f2", "#fda4af", "#e11d48", "#9f1239", "#4c0519"],
+  // zsviczian END
 } as const;
 
 export type ColorPalette = typeof COLOR_PALETTE;
@@ -237,6 +250,17 @@ const COMMON_ELEMENT_SHADES = pick(COLOR_PALETTE, [
   "mint",
   "olive",
   "plum",
+  // zsviczian -- fifth and sixth mnemonic rows. I remains the Eyedropper.
+  "coral",
+  "amber",
+  "chartreuse",
+  "forest",
+  "turquoise",
+  "azure",
+  "indigo",
+  "lavender",
+  "magenta",
+  "burgundy",
 ]);
 
 // quick picks defaults

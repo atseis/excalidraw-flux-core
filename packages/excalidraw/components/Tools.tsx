@@ -183,7 +183,11 @@ export const isToolShortcutEnabled = (
   type: ToolbarToolType,
   kind: "numeric" | "letter",
   preferences?: ToolShortcutPreferences,
-) => !isConfigurableToolShortcut(type) || preferences?.[type]?.[kind] !== false;
+) =>
+  // zsviczian -- Flux reserves H for its Arrowhead selector. Standalone
+  // Excalidraw (no host preferences) retains the native Hand shortcut.
+  !(type === "hand" && kind === "letter" && preferences !== undefined) &&
+  (!isConfigurableToolShortcut(type) || preferences?.[type]?.[kind] !== false);
 
 export const getToolLetter = (
   type: ToolbarToolType,

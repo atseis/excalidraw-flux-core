@@ -448,6 +448,13 @@ import {
   getSharedMermaidInstance,
 } from "../obsidianUtils";
 
+import {
+  actionChangeArrowhead,
+  actionChangeArrowType,
+  actionChangeSnapProp,
+  getFontSize,
+} from "../actions/actionProperties";
+
 import ConvertElementTypePopup, {
   getConversionTypeFromElements,
   convertElementTypePopupAtom,
@@ -477,13 +484,11 @@ import { CursorHint, CursorHints } from "./CursorHint";
 import { MagicIcon, copyIcon, fullscreenIcon } from "./icons";
 import { AppStateObserver, type OnStateChange } from "./AppStateObserver";
 
-import {
-  findShapeByKey,
-  isToolShortcutEnabled,
-  TOGGLE_TOOLS,
-} from "./Tools";
+import { findShapeByKey, isToolShortcutEnabled, TOGGLE_TOOLS } from "./Tools";
 
 import UnlockPopup from "./UnlockPopup";
+
+import { getTooltipDiv } from "./Tooltip";
 
 import type { ExcalidrawLibraryIds } from "../data/types";
 
@@ -525,11 +530,6 @@ import type {
 } from "../types";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { Action, ActionName, ActionResult } from "../actions/types";
-import { getTooltipDiv } from "./Tooltip";
-import {
-  actionChangeArrowhead,
-  getFontSize,
-} from "../actions/actionProperties";
 
 const AppContext = React.createContext<AppClassProperties>(null!);
 const AppPropsContext = React.createContext<AppProps>(null!);
@@ -671,6 +671,26 @@ const HOST_ARROWHEAD_SHORTCUTS: Partial<Record<string, Arrowhead | null>> = {
 };
 // zsviczian END
 
+// zsviczian START -- host property-selector mnemonics keep Arrow Type and
+// Connection Mode independent from the Arrowhead picker.
+const HOST_ARROW_TYPE_SHORTCUTS: Partial<
+  Record<string, AppState["currentItemArrowType"]>
+> = {
+  s: ARROW_TYPE.sharp,
+  c: ARROW_TYPE.round,
+  e: ARROW_TYPE.elbow,
+  a: ARROW_TYPE.curve,
+};
+
+const HOST_CONNECTION_MODE_SHORTCUTS: Partial<
+  Record<string, AppState["currentItemSnap"]>
+> = {
+  o: "none",
+  p: "points",
+  e: "edge",
+};
+// zsviczian END
+
 class App extends React.Component<AppProps, AppState> {
   canvas: AppClassProperties["canvas"];
   interactiveCanvas: AppClassProperties["interactiveCanvas"] = null;
@@ -766,9 +786,75 @@ class App extends React.Component<AppProps, AppState> {
   };
 
   /**
+   * zsviczian -- host-only two-stroke Connection Mode selector. C has no
+   * standalone tool alias, so an incomplete sequence simply expires.
+   */
+  private pendingConnectionModeShortcut = false;
+  private pendingConnectionModeShortcutTimer: number | null = null;
+
+  private clearPendingConnectionModeShortcut = () => {
+    this.pendingConnectionModeShortcut = false;
+    if (this.pendingConnectionModeShortcutTimer !== null) {
+      window.clearTimeout(this.pendingConnectionModeShortcutTimer);
+      this.pendingConnectionModeShortcutTimer = null;
+    }
+  };
+
+  private startPendingConnectionModeShortcut = () => {
+    this.clearPendingConnectionModeShortcut();
+    this.pendingConnectionModeShortcut = true;
+    this.setState({ openMenu: "shape" });
+    this.pendingConnectionModeShortcutTimer = window.setTimeout(() => {
+      this.pendingConnectionModeShortcut = false;
+      this.pendingConnectionModeShortcutTimer = null;
+    }, 1200);
+  };
+
+  /**
+   * zsviczian -- host-only two-stroke Arrow Type selector. A remains the
+   * Arrow tool after the timeout when its host-configurable alias is enabled.
+   */
+  private pendingArrowTypeShortcut = false;
+  private pendingArrowTypeShortcutTimer: number | null = null;
+
+  private clearPendingArrowTypeShortcut = () => {
+    this.pendingArrowTypeShortcut = false;
+    if (this.pendingArrowTypeShortcutTimer !== null) {
+      window.clearTimeout(this.pendingArrowTypeShortcutTimer);
+      this.pendingArrowTypeShortcutTimer = null;
+    }
+  };
+
+  private startPendingArrowTypeShortcut = () => {
+    this.clearPendingArrowTypeShortcut();
+    this.pendingArrowTypeShortcut = true;
+    this.setState({ openMenu: "shape" });
+    this.pendingArrowTypeShortcutTimer = window.setTimeout(() => {
+      this.pendingArrowTypeShortcut = false;
+      this.pendingArrowTypeShortcutTimer = null;
+
+      if (
+        isToolShortcutEnabled(
+          "arrow",
+          "letter",
+          this.props.toolShortcutPreferences,
+        ) &&
+        !this.state.viewModeEnabled &&
+        !this.state.editingTextElement &&
+        !this.state.newElement &&
+        !this.state.selectionElement &&
+        !this.state.selectedElementsAreBeingDragged
+      ) {
+        this.setActiveTool({ type: "arrow" }, { toggle: true });
+      }
+    }, 1200);
+  };
+
+  /**
    * zsviczian -- host-only two-stroke Arrowhead selector. The second key uses
    * the native picker's mnemonic; Shift targets the start, otherwise the end.
-   * A lone A retains its Arrow-tool meaning after the timeout when enabled.
+   * H is reserved for Arrowheads while host shortcut preferences are active;
+   * standalone Excalidraw keeps its native H = Hand shortcut.
    */
   private pendingArrowheadShortcut = false;
   private pendingArrowheadShortcutTimer: number | null = null;
@@ -788,21 +874,6 @@ class App extends React.Component<AppProps, AppState> {
     this.pendingArrowheadShortcutTimer = window.setTimeout(() => {
       this.pendingArrowheadShortcut = false;
       this.pendingArrowheadShortcutTimer = null;
-
-      if (
-        isToolShortcutEnabled(
-          "arrow",
-          "letter",
-          this.props.toolShortcutPreferences,
-        ) &&
-        !this.state.viewModeEnabled &&
-        !this.state.editingTextElement &&
-        !this.state.newElement &&
-        !this.state.selectionElement &&
-        !this.state.selectedElementsAreBeingDragged
-      ) {
-        this.setActiveTool({ type: "arrow" }, { toggle: true });
-      }
     }, 1200);
   };
 
@@ -4077,6 +4148,8 @@ class App extends React.Component<AppProps, AppState> {
 
   public componentWillUnmount() {
     this.clearPendingLineStyleShortcut(); // zsviczian -- clear host selector timers on unmount
+    this.clearPendingConnectionModeShortcut(); // zsviczian -- clear host selector timers on unmount
+    this.clearPendingArrowTypeShortcut(); // zsviczian -- clear host selector timers on unmount
     this.clearPendingArrowheadShortcut(); // zsviczian -- clear host selector timers on unmount
 
     // we're recreating the api object reference so that the
@@ -6138,13 +6211,10 @@ class App extends React.Component<AppProps, AppState> {
         !isInputLike(event.target);
       const lowerCaseKey = event.key.toLowerCase();
       const isPlainShortcut =
-        !event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey;
+        !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
 
-      // zsviczian START -- host property shortcuts (`ls/ld/lt/la` and the
-      // two-stroke Arrowhead selector) stay independent of standalone keys.
+      // zsviczian START -- host property shortcuts (`L`, `C`, `A`, and `H`
+      // prefixes) stay independent of standalone keys.
       if (this.pendingLineStyleShortcut) {
         if (event.repeat && lowerCaseKey === KEYS.L) {
           event.preventDefault();
@@ -6184,8 +6254,60 @@ class App extends React.Component<AppProps, AppState> {
         }
       }
 
-      if (this.pendingArrowheadShortcut) {
+      if (this.pendingConnectionModeShortcut) {
+        if (event.repeat && lowerCaseKey === KEYS.C) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
+        this.clearPendingConnectionModeShortcut();
+        const connectionMode = HOST_CONNECTION_MODE_SHORTCUTS[lowerCaseKey];
+        if (
+          canHandleHostPropertyShortcut &&
+          isPlainShortcut &&
+          !event.repeat &&
+          connectionMode !== undefined
+        ) {
+          this.actionManager.executeAction(
+            actionChangeSnapProp,
+            "keyboard",
+            connectionMode,
+          );
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+
+      if (this.pendingArrowTypeShortcut) {
         if (event.repeat && lowerCaseKey === KEYS.A) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
+        this.clearPendingArrowTypeShortcut();
+        const arrowType = HOST_ARROW_TYPE_SHORTCUTS[lowerCaseKey];
+        if (
+          canHandleHostPropertyShortcut &&
+          isPlainShortcut &&
+          !event.repeat &&
+          arrowType !== undefined
+        ) {
+          this.actionManager.executeAction(
+            actionChangeArrowType,
+            "keyboard",
+            arrowType,
+          );
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+
+      if (this.pendingArrowheadShortcut) {
+        if (event.repeat && lowerCaseKey === KEYS.H) {
           event.preventDefault();
           event.stopPropagation();
           return;
@@ -6201,14 +6323,10 @@ class App extends React.Component<AppProps, AppState> {
           !event.repeat &&
           arrowhead !== undefined
         ) {
-          this.actionManager.executeAction(
-            actionChangeArrowhead,
-            "keyboard",
-            {
-              position: event.shiftKey ? "start" : "end",
-              type: arrowhead,
-            },
-          );
+          this.actionManager.executeAction(actionChangeArrowhead, "keyboard", {
+            position: event.shiftKey ? "start" : "end",
+            type: arrowhead,
+          });
           event.preventDefault();
           event.stopPropagation();
           return;
@@ -6231,7 +6349,31 @@ class App extends React.Component<AppProps, AppState> {
         canHandleHostPropertyShortcut &&
         isPlainShortcut &&
         !event.repeat &&
+        lowerCaseKey === KEYS.C
+      ) {
+        this.startPendingConnectionModeShortcut();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      if (
+        canHandleHostPropertyShortcut &&
+        isPlainShortcut &&
+        !event.repeat &&
         lowerCaseKey === KEYS.A
+      ) {
+        this.startPendingArrowTypeShortcut();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      if (
+        canHandleHostPropertyShortcut &&
+        isPlainShortcut &&
+        !event.repeat &&
+        lowerCaseKey === KEYS.H
       ) {
         this.startPendingArrowheadShortcut();
         event.preventDefault();
@@ -6367,6 +6509,19 @@ class App extends React.Component<AppProps, AppState> {
           }
 
           if (
+            shape === "bucketfill" &&
+            this.props.toolShortcutPreferences !== undefined
+          ) {
+            // zsviczian -- B opens the same full background palette used by
+            // G in Flux instead of cycling a private five-color list.
+            if (this.state.activeTool.type !== "bucketfill") {
+              this.setActiveTool({ type: "bucketfill" }, { toggle: true });
+            }
+            this.setState({
+              openMenu: "shape",
+              openPopup: "elementBackground",
+            });
+          } else if (
             shape === "bucketfill" &&
             this.state.activeTool.type === "bucketfill"
           ) {
@@ -9399,7 +9554,14 @@ class App extends React.Component<AppProps, AppState> {
       this.setAppState({ snapLines: [] });
     }
 
-    if (this.state.openPopup) {
+    // zsviczian -- Bucket Fill is a persistent paint session in host mode:
+    // keep its shared background palette open while the user clicks multiple
+    // regions. The palette's own Escape handler remains the explicit exit.
+    const keepBucketFillPaletteOpen =
+      this.props.toolShortcutPreferences !== undefined &&
+      this.state.activeTool.type === TOOL_TYPE.bucketfill &&
+      this.state.openPopup === "elementBackground";
+    if (this.state.openPopup && !keepBucketFillPaletteOpen) {
       this.setState({ openPopup: null });
     }
 
