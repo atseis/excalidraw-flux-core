@@ -452,7 +452,6 @@ export {
   exportToClipboard,
 } from "@excalidraw/utils/export";
 
-
 export { getCommonBoundingBox } from "@excalidraw/element/bounds"; //zsviczian
 export { getMaximumGroups } from "@excalidraw/element/groups"; //zsviczian
 export { measureText } from "@excalidraw/element/textMeasurements"; //zsviczian
@@ -502,7 +501,8 @@ export {
   viewportCoordsToSceneCoords,
   getFormFactor,
   safelyParseJSON, //zsviczian
-  destroyObsidianUtils, //zsviczian
+  configureObsidianCommonHost, //zsviczian
+  OBSIDIAN_COMMON_HOST_PROTOCOL_VERSION, //zsviczian
   throttleRAF,
 } from "@excalidraw/common";
 
@@ -604,3 +604,8 @@ export function useExcalidrawStateValue(
 export { _useOnAppStateChange as useOnExcalidrawStateChange };
 
 export { applyDarkModeFilter, getStrokeWidthByKey };
+
+export {
+  configureObsidianExcalidrawHost,
+  OBSIDIAN_EXCALIDRAW_HOST_PROTOCOL_VERSION,
+} from "./obsidianExcalidrawHost"; //zsviczian
