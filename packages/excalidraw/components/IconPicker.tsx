@@ -23,6 +23,7 @@ type Option<T> = {
   text: string;
   icon: JSX.Element;
   keyBinding: string | null;
+  caseSensitiveKeyBinding?: boolean; // zsviczian -- let the host Arrowhead palette reserve distinct h/H direction actions
 };
 
 type PickerSection<T> = {
@@ -71,13 +72,17 @@ function Picker<T>({
   label,
   onChange,
   onClose,
+  showAllOptions = false,
+  showShiftedKeyBindings = false,
 }: {
   label: string;
   value: T;
   visibleSections: readonly PickerSection<T>[];
   hiddenSections?: readonly PickerSection<T>[];
-  onChange: (value: T) => void;
+  onChange: (value: T, event?: React.KeyboardEvent) => void; // zsviczian -- host Arrowhead shortcuts use letter case to target start/end
   onClose: () => void;
+  showAllOptions?: boolean; // zsviczian -- persistent host palettes expose every mnemonic without a nested disclosure
+  showShiftedKeyBindings?: boolean; // zsviczian -- advertise lowercase/adaptive and uppercase/start variants together
 }) {
   const { container } = useExcalidrawContainer();
   const [showMoreOptions, setShowMoreOptions] = useAtom(moreOptionsAtom);
@@ -85,17 +90,19 @@ function Picker<T>({
   const allOptions = flattenOptions(allSections);
   const navigationRows = getNavigationRows([
     ...visibleSections,
-    ...(showMoreOptions ? hiddenSections : []),
+    ...(showMoreOptions || showAllOptions ? hiddenSections : []), // zsviczian -- all host Arrowhead choices participate in keyboard navigation
   ]);
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     const pressedOption = allOptions.find(
-      (option) => option.keyBinding === event.key.toLowerCase(),
+      (option) =>
+        option.keyBinding ===
+        (option.caseSensitiveKeyBinding ? event.key : event.key.toLowerCase()), // zsviczian -- distinguish h/H direction actions while ordinary mnemonics accept either case
     );
 
     if (!(event.metaKey || event.altKey || event.ctrlKey) && pressedOption) {
       // Keybinding navigation
-      onChange(pressedOption.value);
+      onChange(pressedOption.value, event); // zsviczian -- preserve case so the Arrowhead palette can explicitly target the start
 
       event.preventDefault();
     } else if (event.key === KEYS.TAB) {
@@ -103,7 +110,7 @@ function Picker<T>({
       const nextIndex = event.shiftKey
         ? (allOptions.length + index - 1) % allOptions.length
         : (index + 1) % allOptions.length;
-      onChange(allOptions[nextIndex].value);
+      onChange(allOptions[nextIndex].value, event); // zsviczian -- keep the host callback aware of the input method
     } else if (isArrowKey(event.key)) {
       // Arrow navigation
       const isRTL = getLanguage().rtl;
@@ -138,7 +145,7 @@ function Picker<T>({
                 nextRow[Math.min(column, nextRow.length - 1)] ??
                 allOptions[index];
 
-              onChange(nextOption.value);
+              onChange(nextOption.value, event); // zsviczian -- keep the host callback aware of the input method
               event.preventDefault();
               event.nativeEvent.stopImmediatePropagation();
               event.stopPropagation();
@@ -166,7 +173,7 @@ function Picker<T>({
                 previousRow[Math.min(column, previousRow.length - 1)] ??
                 allOptions[index];
 
-              onChange(previousOption.value);
+              onChange(previousOption.value, event); // zsviczian -- keep the host callback aware of the input method
               event.preventDefault();
               event.nativeEvent.stopImmediatePropagation();
               event.stopPropagation();
@@ -176,7 +183,7 @@ function Picker<T>({
           }
         }
 
-        onChange(allOptions[nextIndex].value);
+        onChange(allOptions[nextIndex].value, event); // zsviczian -- keep the host callback aware of the input method
       }
       event.preventDefault();
     } else if (event.key === KEYS.ESCAPE || event.key === KEYS.ENTER) {
@@ -225,7 +232,14 @@ function Picker<T>({
           >
             {option.icon}
             {option.keyBinding && (
-              <span className="picker-keybinding">{option.keyBinding}</span>
+              <span className="picker-keybinding">
+                {showShiftedKeyBindings &&
+                !option.caseSensitiveKeyBinding &&
+                /^[a-z]$/.test(option.keyBinding)
+                  ? `${option.keyBinding}/${option.keyBinding.toUpperCase()}`
+                  : option.keyBinding}
+                {/* zsviczian -- show both adaptive/end and explicit-start Arrowhead mnemonics */}
+              </span>
             )}
           </button>
         ))}
@@ -264,20 +278,22 @@ function Picker<T>({
       <div className="picker-sections">
         {renderSections(visibleSections)}
 
-        {hiddenSections.length > 0 && (
-          <Collapsible
-            label={t("labels.more_options")}
-            open={showMoreOptions}
-            openTrigger={() => {
-              setShowMoreOptions((value) => !value);
-            }}
-            className="picker-collapsible"
-          >
-            <div className="picker-sections">
-              {renderSections(hiddenSections)}
-            </div>
-          </Collapsible>
-        )}
+        {showAllOptions
+          ? renderSections(hiddenSections) // zsviczian -- keep the host Arrowhead palette fully expanded
+          : hiddenSections.length > 0 && (
+              <Collapsible
+                label={t("labels.more_options")}
+                open={showMoreOptions}
+                openTrigger={() => {
+                  setShowMoreOptions((value) => !value);
+                }}
+                className="picker-collapsible"
+              >
+                <div className="picker-sections">
+                  {renderSections(hiddenSections)}
+                </div>
+              </Collapsible>
+            )}
       </div>
     </Popover.Content>
   );
@@ -289,14 +305,29 @@ export function IconPicker<T>({
   visibleSections,
   hiddenSections,
   onChange,
+  open,
+  onOpenChange,
+  showAllOptions,
+  showShiftedKeyBindings,
 }: {
   label: string;
   value: T;
   visibleSections: readonly PickerSection<T>[];
   hiddenSections?: readonly PickerSection<T>[];
-  onChange: (value: T) => void;
+  onChange: (value: T, event?: React.KeyboardEvent) => void; // zsviczian -- host Arrowhead shortcuts use case to select the target endpoint
+  open?: boolean; // zsviczian -- allow the host H shortcut to control the native picker
+  onOpenChange?: (open: boolean) => void; // zsviczian -- synchronize controlled host picker dismissal with app state
+  showAllOptions?: boolean; // zsviczian -- persistent host palettes expose every option
+  showShiftedKeyBindings?: boolean; // zsviczian -- display lowercase/uppercase endpoint variants
 }) {
-  const [isActive, setActive] = React.useState(false);
+  const [internalIsActive, setInternalIsActive] = React.useState(false); // zsviczian -- retain the native uncontrolled picker path
+  const isActive = open ?? internalIsActive; // zsviczian -- opt into host-controlled mode only when requested
+  const setActive = (nextOpen: boolean) => {
+    if (open === undefined) {
+      setInternalIsActive(nextOpen);
+    }
+    onOpenChange?.(nextOpen);
+  }; // zsviczian -- one close path for native and host-controlled pickers
   const selectedOption = useMemo(
     () =>
       findOption(visibleSections, (option) => option.value === value) ??
@@ -322,6 +353,8 @@ export function IconPicker<T>({
             value={value}
             label={label}
             onChange={onChange}
+            showAllOptions={showAllOptions}
+            showShiftedKeyBindings={showShiftedKeyBindings}
             onClose={() => {
               setActive(false);
             }}

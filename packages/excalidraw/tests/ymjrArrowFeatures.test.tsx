@@ -64,6 +64,9 @@ const ARROWHEAD_SHORTCUTS = [
   ["x", "cardinality_one"],
   ["c", "cardinality_many"],
   ["v", "cardinality_one_or_many"],
+  ["i", "cardinality_exactly_one"],
+  ["o", "cardinality_zero_or_one"],
+  ["m", "cardinality_zero_or_many"],
 ] as const satisfies readonly (readonly [string, Arrowhead | null])[];
 
 const CONNECTION_MODE_SHORTCUTS = [
@@ -83,7 +86,9 @@ const pressArrowheadShortcut = (
   secondKey: string,
   position: "start" | "end" = "end",
 ) => {
-  fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+  if (position === "end") {
+    fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+  }
   fireEvent.keyDown(document, {
     key: position === "start" ? secondKey.toUpperCase() : secondKey,
     code: `Key${secondKey.toUpperCase()}`,
@@ -544,6 +549,208 @@ describe("YMJR-compatible arrow interaction", () => {
       );
     },
   );
+
+  it("opens a persistent, fully expanded Arrowhead palette and keeps it open while trying options", async () => {
+    const arrow = API.createElement({
+      type: "arrow",
+      x: 50,
+      y: 50,
+      points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(220, 80)],
+      startArrowhead: null,
+      endArrowhead: "arrow",
+    });
+    API.setElements([arrow]);
+    API.setSelectedElements([arrow]);
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+    });
+
+    const picker = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(".picker");
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    const keyBindings = Array.from(
+      picker.querySelectorAll<HTMLElement>(".picker-keybinding"),
+      (element) => element.textContent,
+    );
+    expect(keyBindings).toEqual(
+      expect.arrayContaining(["w/W", "i/I", "o/O", "m/M", "h", "H"]),
+    );
+    expect(picker.textContent).not.toContain("More options");
+
+    act(() => {
+      fireEvent.keyDown(picker, { key: "w", code: "KeyW" });
+    });
+    expect(
+      excalidrawAPI.getSceneElements().find(isArrowElement)!.endArrowhead,
+    ).toBe("arrow");
+    expect(excalidrawAPI.getAppState().openPopup).toBe("arrowheads");
+
+    act(() => {
+      fireEvent.keyDown(picker, { key: "e", code: "KeyE" });
+    });
+    expect(
+      excalidrawAPI.getSceneElements().find(isArrowElement)!.endArrowhead,
+    ).toBe("triangle");
+    expect(excalidrawAPI.getAppState().openPopup).toBe("arrowheads");
+
+    act(() => {
+      fireEvent.keyDown(picker, { key: "t", code: "KeyT" });
+    });
+    expect(
+      excalidrawAPI.getSceneElements().find(isArrowElement)!.endArrowhead,
+    ).toBe("chevron");
+    expect(excalidrawAPI.getAppState().openPopup).toBe("arrowheads");
+
+    act(() => {
+      fireEvent.keyDown(picker, { key: "Escape", code: "Escape" });
+    });
+    expect(excalidrawAPI.getAppState().openPopup).toBeNull();
+  });
+
+  it("uses lowercase Arrowhead keys on the existing endpoint of a reversed one-way arrow", () => {
+    const arrow = API.createElement({
+      type: "arrow",
+      x: 50,
+      y: 50,
+      points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(220, 80)],
+      startArrowhead: "arrow",
+      endArrowhead: null,
+    });
+    API.setElements([arrow]);
+    API.setSelectedElements([arrow]);
+
+    act(() => {
+      pressArrowheadShortcut("b");
+    });
+
+    const changedArrow = excalidrawAPI
+      .getSceneElements()
+      .find(isArrowElement)!;
+    expect(changedArrow.startArrowhead).toBe("block_arrow");
+    expect(changedArrow.endArrowhead).toBeNull();
+  });
+
+  it("uses lowercase on end for a normal one-way arrow and uppercase explicitly on start", () => {
+    const arrow = API.createElement({
+      type: "arrow",
+      x: 50,
+      y: 50,
+      points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(220, 80)],
+      startArrowhead: null,
+      endArrowhead: "arrow",
+    });
+    API.setElements([arrow]);
+    API.setSelectedElements([arrow]);
+
+    act(() => {
+      pressArrowheadShortcut("e");
+      pressArrowheadShortcut("b", "start");
+    });
+
+    const changedArrow = excalidrawAPI
+      .getSceneElements()
+      .find(isArrowElement)!;
+    expect(changedArrow.startArrowhead).toBe("block_arrow");
+    expect(changedArrow.endArrowhead).toBe("triangle");
+  });
+
+  it("makes a one-way Arrowhead bidirectional through hh from either direction", () => {
+    const endOnly = API.createElement({
+      type: "arrow",
+      x: 50,
+      y: 50,
+      points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(220, 80)],
+      startArrowhead: null,
+      endArrowhead: "triangle",
+    });
+    API.setElements([endOnly]);
+    API.setSelectedElements([endOnly]);
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+      fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+    });
+    let changedArrow = excalidrawAPI
+      .getSceneElements()
+      .find(isArrowElement)!;
+    expect(changedArrow.startArrowhead).toBe("triangle");
+    expect(changedArrow.endArrowhead).toBe("triangle");
+
+    const startOnly = {
+      ...changedArrow,
+      startArrowhead: "block_arrow_outline" as const,
+      endArrowhead: null,
+    };
+    API.setElements([startOnly]);
+    API.setSelectedElements([startOnly]);
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+    });
+    changedArrow = excalidrawAPI.getSceneElements().find(isArrowElement)!;
+    expect(changedArrow.startArrowhead).toBe("block_arrow_outline");
+    expect(changedArrow.endArrowhead).toBe("block_arrow_outline");
+  });
+
+  it("makes a bidirectional Arrowhead one-way through hH and leaves one-way/empty arrows unchanged", () => {
+    const bidirectional = API.createElement({
+      type: "arrow",
+      x: 50,
+      y: 50,
+      points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(220, 80)],
+      startArrowhead: "triangle",
+      endArrowhead: "block_arrow",
+    });
+    API.setElements([bidirectional]);
+    API.setSelectedElements([bidirectional]);
+
+    act(() => {
+      fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+      fireEvent.keyDown(document, {
+        key: "H",
+        code: "KeyH",
+        shiftKey: true,
+      });
+    });
+    let changedArrow = excalidrawAPI
+      .getSceneElements()
+      .find(isArrowElement)!;
+    expect(changedArrow.startArrowhead).toBeNull();
+    expect(changedArrow.endArrowhead).toBe("block_arrow");
+
+    act(() => {
+      fireEvent.keyDown(document, {
+        key: "H",
+        code: "KeyH",
+        shiftKey: true,
+      });
+    });
+    changedArrow = excalidrawAPI.getSceneElements().find(isArrowElement)!;
+    expect(changedArrow.startArrowhead).toBeNull();
+    expect(changedArrow.endArrowhead).toBe("block_arrow");
+
+    const empty = {
+      ...changedArrow,
+      startArrowhead: null,
+      endArrowhead: null,
+    };
+    API.setElements([empty]);
+    API.setSelectedElements([empty]);
+    act(() => {
+      fireEvent.keyDown(document, { key: "h", code: "KeyH" });
+      fireEvent.keyDown(document, {
+        key: "H",
+        code: "KeyH",
+        shiftKey: true,
+      });
+    });
+    changedArrow = excalidrawAPI.getSceneElements().find(isArrowElement)!;
+    expect(changedArrow.startArrowhead).toBeNull();
+    expect(changedArrow.endArrowhead).toBeNull();
+  });
 
   it("changes Arrowheads without changing the selected Automatic Curve path", () => {
     const arrow = {

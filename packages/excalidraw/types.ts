@@ -491,6 +491,7 @@ export interface AppState {
     | "canvasBackground"
     | "elementBackground"
     | "elementStroke"
+    | "arrowheads"
     | "fontFamily"
     | "compactTextProperties"
     | "compactStrokeStyles"

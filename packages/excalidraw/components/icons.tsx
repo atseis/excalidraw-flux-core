@@ -1441,6 +1441,38 @@ export const ArrowheadArrowIcon = React.memo(
     ),
 );
 
+// zsviczian START -- host Arrowhead palette direction actions need native-looking previews
+export const ArrowheadBidirectionalIcon = React.memo(() =>
+  createIcon(
+    <g
+      stroke="var(--icon-fill-color)"
+      strokeWidth={2}
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M7,11 H33 M17,5 L7,11 L17,17 M23,5 L33,11 L23,17" />
+    </g>,
+    arrowheadPreviewIconProps,
+  ),
+);
+
+export const ArrowheadUnidirectionalIcon = React.memo(() =>
+  createIcon(
+    <g
+      stroke="var(--icon-fill-color)"
+      strokeWidth={2}
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M7,11 H33 M23,5 L33,11 L23,17" />
+    </g>,
+    arrowheadPreviewIconProps,
+  ),
+);
+// zsviczian END
+
 export const ArrowheadTriangleIcon = React.memo(
   ({ flip = false }: { flip?: boolean }) =>
     createIcon(
@@ -1461,7 +1493,7 @@ export const ArrowheadTriangleOutlineIcon = React.memo(
   ({ flip = false }: { flip?: boolean }) =>
     createIcon(
       <g
-        stroke="var(--icon-fill-color)"//zsviczian
+        stroke="var(--icon-fill-color)" //zsviczian
         fill="none"
         transform={flip ? "translate(40, 0) scale(-1, 1)" : ""}
         strokeWidth={2}
@@ -1730,7 +1762,6 @@ export const FontSizeExtraSmallIcon = createIcon(
   </>,
   modifiedTablerIconProps,
 );
-
 
 export const FontSizeSmallIcon = createIcon(
   <>

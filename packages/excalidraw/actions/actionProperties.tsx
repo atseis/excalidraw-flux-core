@@ -103,6 +103,7 @@ import { IconPicker } from "../components/IconPicker";
 import { Range } from "../components/Range";
 import {
   ArrowheadArrowIcon,
+  ArrowheadBidirectionalIcon,
   ArrowheadBarIcon,
   ArrowheadCircleIcon,
   ArrowheadTriangleIcon,
@@ -133,6 +134,7 @@ import {
   TextAlignRightIcon,
   FillZigZagIcon,
   ArrowheadTriangleOutlineIcon,
+  ArrowheadUnidirectionalIcon,
   ArrowheadCircleOutlineIcon,
   ArrowheadDiamondIcon,
   ArrowheadDiamondOutlineIcon,
@@ -2222,19 +2224,19 @@ const getArrowheadOptions = (flip: boolean) => {
             value: "cardinality_exactly_one",
             text: t("labels.arrowhead_cardinality_exactly_one"),
             icon: <ArrowheadCardinalityExactlyOneIcon flip={flip} />,
-            keyBinding: null,
+            keyBinding: "i", // zsviczian -- complete the host Arrowhead mnemonic set
           },
           {
             value: "cardinality_zero_or_one",
             text: t("labels.arrowhead_cardinality_zero_or_one"),
             icon: <ArrowheadCardinalityZeroOrOneIcon flip={flip} />,
-            keyBinding: null,
+            keyBinding: "o", // zsviczian -- complete the host Arrowhead mnemonic set
           },
           {
             value: "cardinality_zero_or_many",
             text: t("labels.arrowhead_cardinality_zero_or_many"),
             icon: <ArrowheadCardinalityZeroOrManyIcon flip={flip} />,
-            keyBinding: null,
+            keyBinding: "m", // zsviczian -- complete the host Arrowhead mnemonic set
           },
         ],
       },
@@ -2242,41 +2244,114 @@ const getArrowheadOptions = (flip: boolean) => {
   } as const;
 };
 
-export const actionChangeArrowhead = register<{
-  position: "start" | "end";
-  type: Arrowhead | null; // zsviczian -- host shortcuts can explicitly clear an Arrowhead
-}>({
+// zsviczian START -- persistent host Arrowhead palette endpoint semantics
+type ArrowheadDirectionAction = "make-bidirectional" | "make-unidirectional";
+
+type ArrowheadChange =
+  | {
+      position: "start" | "end" | "adaptive";
+      type: Arrowhead | null;
+    }
+  | {
+      direction: ArrowheadDirectionAction;
+    };
+
+type ArrowheadPickerValue = Arrowhead | null | ArrowheadDirectionAction;
+
+const isArrowheadDirectionAction = (
+  value: ArrowheadPickerValue,
+): value is ArrowheadDirectionAction =>
+  value === "make-bidirectional" || value === "make-unidirectional";
+
+const getArrowheadDirectionSection = () =>
+  ({
+    name: t("labels.arrowhead_direction"),
+    options: [
+      {
+        value: "make-bidirectional",
+        text: t("labels.arrowhead_make_bidirectional"),
+        icon: <ArrowheadBidirectionalIcon />,
+        keyBinding: "h",
+        caseSensitiveKeyBinding: true,
+      },
+      {
+        value: "make-unidirectional",
+        text: t("labels.arrowhead_make_unidirectional"),
+        icon: <ArrowheadUnidirectionalIcon />,
+        keyBinding: "H",
+        caseSensitiveKeyBinding: true,
+      },
+    ],
+  } as const);
+// zsviczian END
+
+export const actionChangeArrowhead = register<ArrowheadChange>({
+  // zsviczian -- host shortcuts can target an endpoint adaptively or change directionality
   name: "changeArrowhead",
   label: "Change arrowheads",
   trackEvent: false,
   perform: (elements, appState, value) => {
     invariant(value, "actionChangeArrowhead: value must be defined");
 
-    return {
-      elements: changeProperty(elements, appState, (el) => {
-        if (isLinearElement(el)) {
-          const { position, type } = value;
-
-          if (position === "start") {
-            const element: ExcalidrawLinearElement = newElementWith(el, {
-              startArrowhead: type,
-            });
-            return element;
-          } else if (position === "end") {
-            const element: ExcalidrawLinearElement = newElementWith(el, {
-              endArrowhead: type,
-            });
-            return element;
-          }
+    const updateArrowheads = (
+      startArrowhead: Arrowhead | null,
+      endArrowhead: Arrowhead | null,
+    ) => {
+      if ("direction" in value) {
+        if (value.direction === "make-bidirectional") {
+          return startArrowhead !== null && endArrowhead === null
+            ? { startArrowhead, endArrowhead: startArrowhead }
+            : startArrowhead === null && endArrowhead !== null
+            ? { startArrowhead: endArrowhead, endArrowhead }
+            : { startArrowhead, endArrowhead };
         }
 
-        return el;
+        return startArrowhead !== null && endArrowhead !== null
+          ? { startArrowhead: null, endArrowhead }
+          : { startArrowhead, endArrowhead };
+      }
+
+      if (value.position === "start") {
+        return { startArrowhead: value.type, endArrowhead };
+      }
+      if (value.position === "end") {
+        return { startArrowhead, endArrowhead: value.type };
+      }
+      return startArrowhead !== null && endArrowhead === null
+        ? { startArrowhead: value.type, endArrowhead }
+        : { startArrowhead, endArrowhead: value.type };
+    }; // zsviczian -- lowercase follows the existing one-way endpoint; h/H only change directionality when meaningful
+
+    const nextDefaults =
+      "position" in value && value.position === "adaptive"
+        ? {
+            startArrowhead: appState.currentItemStartArrowhead,
+            endArrowhead: value.type,
+          }
+        : updateArrowheads(
+            appState.currentItemStartArrowhead,
+            appState.currentItemEndArrowhead,
+          ); // zsviczian -- lowercase defaults still describe the next arrow's end even when a selected reversed arrow adapts to start
+
+    return {
+      elements: changeProperty(elements, appState, (el) => {
+        if (!isLinearElement(el)) {
+          return el;
+        }
+
+        const nextArrowheads = updateArrowheads(
+          el.startArrowhead,
+          el.endArrowhead,
+        );
+        const element: ExcalidrawLinearElement = newElementWith(el, {
+          ...nextArrowheads,
+        });
+        return element;
       }),
       appState: {
         ...appState,
-        [value.position === "start"
-          ? "currentItemStartArrowhead"
-          : "currentItemEndArrowhead"]: value.type,
+        currentItemStartArrowhead: nextDefaults.startArrowhead,
+        currentItemEndArrowhead: nextDefaults.endArrowhead,
       },
       captureUpdate: CaptureUpdateAction.IMMEDIATELY,
     };
@@ -2291,12 +2366,16 @@ export const actionChangeArrowhead = register<{
       () => getArrowheadOptions(!!isRTL),
       [isRTL],
     );
+    const isHostArrowheadPaletteOpen = appState.openPopup === "arrowheads"; // zsviczian -- H controls the native end picker only for the persistent host session
+    const hostEndHiddenSections = isHostArrowheadPaletteOpen
+      ? [...endArrowheadOptions.hiddenSections, getArrowheadDirectionSection()]
+      : endArrowheadOptions.hiddenSections; // zsviczian -- keep direction actions out of ordinary mouse-opened pickers
 
     return (
       <fieldset>
         <legend>{t("labels.arrowheads")}</legend>
         <div className="iconSelectList buttonList">
-          <IconPicker
+          <IconPicker<Arrowhead | null>
             visibleSections={startArrowheadOptions.visibleSections}
             hiddenSections={startArrowheadOptions.hiddenSections}
             label="arrowhead_start"
@@ -2313,11 +2392,11 @@ export const actionChangeArrowhead = register<{
             )}
             onChange={(value) => updateData({ position: "start", type: value })}
           />
-          <IconPicker
+          <IconPicker<ArrowheadPickerValue>
             visibleSections={endArrowheadOptions.visibleSections}
-            hiddenSections={endArrowheadOptions.hiddenSections}
+            hiddenSections={hostEndHiddenSections}
             label="arrowhead_end"
-            value={getFormValue<Arrowhead | null>(
+            value={getFormValue<ArrowheadPickerValue>(
               elements,
               app,
               (element) =>
@@ -2328,7 +2407,37 @@ export const actionChangeArrowhead = register<{
               (hasSelection) =>
                 hasSelection ? null : appState.currentItemEndArrowhead,
             )}
-            onChange={(value) => updateData({ position: "end", type: value })}
+            open={isHostArrowheadPaletteOpen ? true : undefined}
+            onOpenChange={
+              isHostArrowheadPaletteOpen
+                ? (open) => {
+                    if (!open) {
+                      app.setAppState({ openPopup: null });
+                    }
+                  }
+                : undefined
+            }
+            showAllOptions={isHostArrowheadPaletteOpen}
+            showShiftedKeyBindings={isHostArrowheadPaletteOpen}
+            onChange={(value, event) => {
+              if (isArrowheadDirectionAction(value)) {
+                updateData({ direction: value });
+                return;
+              }
+
+              const isUppercaseLetter =
+                event?.key.length === 1 &&
+                event.key === event.key.toUpperCase() &&
+                event.key !== event.key.toLowerCase();
+              updateData({
+                position: isHostArrowheadPaletteOpen
+                  ? isUppercaseLetter
+                    ? "start"
+                    : "adaptive"
+                  : "end",
+                type: value,
+              });
+            }}
           />
         </div>
       </fieldset>

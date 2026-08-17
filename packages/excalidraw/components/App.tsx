@@ -668,6 +668,9 @@ const HOST_ARROWHEAD_SHORTCUTS: Partial<Record<string, Arrowhead | null>> = {
   x: "cardinality_one",
   c: "cardinality_many",
   v: "cardinality_one_or_many",
+  i: "cardinality_exactly_one",
+  o: "cardinality_zero_or_one",
+  m: "cardinality_zero_or_many",
 };
 // zsviczian END
 
@@ -847,33 +850,6 @@ class App extends React.Component<AppProps, AppState> {
       ) {
         this.setActiveTool({ type: "arrow" }, { toggle: true });
       }
-    }, 1200);
-  };
-
-  /**
-   * zsviczian -- host-only two-stroke Arrowhead selector. The second key uses
-   * the native picker's mnemonic; Shift targets the start, otherwise the end.
-   * H is reserved for Arrowheads while host shortcut preferences are active;
-   * standalone Excalidraw keeps its native H = Hand shortcut.
-   */
-  private pendingArrowheadShortcut = false;
-  private pendingArrowheadShortcutTimer: number | null = null;
-
-  private clearPendingArrowheadShortcut = () => {
-    this.pendingArrowheadShortcut = false;
-    if (this.pendingArrowheadShortcutTimer !== null) {
-      window.clearTimeout(this.pendingArrowheadShortcutTimer);
-      this.pendingArrowheadShortcutTimer = null;
-    }
-  };
-
-  private startPendingArrowheadShortcut = () => {
-    this.clearPendingArrowheadShortcut();
-    this.pendingArrowheadShortcut = true;
-    this.setState({ openMenu: "shape" });
-    this.pendingArrowheadShortcutTimer = window.setTimeout(() => {
-      this.pendingArrowheadShortcut = false;
-      this.pendingArrowheadShortcutTimer = null;
     }, 1200);
   };
 
@@ -4150,7 +4126,6 @@ class App extends React.Component<AppProps, AppState> {
     this.clearPendingLineStyleShortcut(); // zsviczian -- clear host selector timers on unmount
     this.clearPendingConnectionModeShortcut(); // zsviczian -- clear host selector timers on unmount
     this.clearPendingArrowTypeShortcut(); // zsviczian -- clear host selector timers on unmount
-    this.clearPendingArrowheadShortcut(); // zsviczian -- clear host selector timers on unmount
 
     // we're recreating the api object reference so that the
     // <ExcalidrawAPIContext.Provider/> picks up on it
@@ -6212,9 +6187,56 @@ class App extends React.Component<AppProps, AppState> {
       const lowerCaseKey = event.key.toLowerCase();
       const isPlainShortcut =
         !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+      const isUppercaseLetter =
+        event.key.length === 1 &&
+        event.key === event.key.toUpperCase() &&
+        event.key !== event.key.toLowerCase();
 
       // zsviczian START -- host property shortcuts (`L`, `C`, `A`, and `H`
       // prefixes) stay independent of standalone keys.
+      if (
+        this.state.openPopup === "arrowheads" &&
+        canHandleHostPropertyShortcut &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey
+      ) {
+        if (event.key === KEYS.ESCAPE) {
+          this.setState({ openPopup: null });
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        } // zsviczian -- dismiss a persistent host Arrowhead session even when its picker is not mounted/focused
+
+        if (event.repeat) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
+        if (lowerCaseKey === KEYS.H) {
+          this.actionManager.executeAction(actionChangeArrowhead, "keyboard", {
+            direction: isUppercaseLetter
+              ? "make-unidirectional"
+              : "make-bidirectional",
+          });
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
+        const arrowhead = HOST_ARROWHEAD_SHORTCUTS[lowerCaseKey];
+        if (arrowhead !== undefined) {
+          this.actionManager.executeAction(actionChangeArrowhead, "keyboard", {
+            position: isUppercaseLetter ? "start" : "adaptive",
+            type: arrowhead,
+          });
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+
       if (this.pendingLineStyleShortcut) {
         if (event.repeat && lowerCaseKey === KEYS.L) {
           event.preventDefault();
@@ -6306,33 +6328,6 @@ class App extends React.Component<AppProps, AppState> {
         }
       }
 
-      if (this.pendingArrowheadShortcut) {
-        if (event.repeat && lowerCaseKey === KEYS.H) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-
-        this.clearPendingArrowheadShortcut();
-        const arrowhead = HOST_ARROWHEAD_SHORTCUTS[lowerCaseKey];
-        if (
-          canHandleHostPropertyShortcut &&
-          !event.altKey &&
-          !event.ctrlKey &&
-          !event.metaKey &&
-          !event.repeat &&
-          arrowhead !== undefined
-        ) {
-          this.actionManager.executeAction(actionChangeArrowhead, "keyboard", {
-            position: event.shiftKey ? "start" : "end",
-            type: arrowhead,
-          });
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-      }
-
       if (
         canHandleHostPropertyShortcut &&
         isPlainShortcut &&
@@ -6375,7 +6370,12 @@ class App extends React.Component<AppProps, AppState> {
         !event.repeat &&
         lowerCaseKey === KEYS.H
       ) {
-        this.startPendingArrowheadShortcut();
+        flushSync(() => {
+          this.setState({
+            openMenu: "shape",
+            openPopup: "arrowheads",
+          });
+        });
         event.preventDefault();
         event.stopPropagation();
         return;
